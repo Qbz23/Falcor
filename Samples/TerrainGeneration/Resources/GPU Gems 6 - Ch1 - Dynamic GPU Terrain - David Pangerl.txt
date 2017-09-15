@@ -1,0 +1,161 @@
+GPU Gems 6 - Ch1 - Dynamic GPU Terrain - David Pangerl 
+	GOAL: 
+		create a render-friendly mesh thats topology resolution can be smoothly 
+		lowered with distance 
+	TERRAIN DATA:
+		height - normalized terrain height 
+		texture blend - texture index and blend params 
+		flowability - measure used to simulated condensed cliffs 
+		compression - measure used to simulate wheel compression 
+	ALGORITHM:
+		Terrain mesh topology is defined by quad resolution R, level size S, 
+		level count L, amd center mesh level count Lc
+			R - edge with of detail level 0 (closest to terrain) 
+			S - level size, number of edge quads. Level 0 made up of SxS quads 
+				each sized RxR 
+			L - Level Count, number of resolution levels 
+			Lc - Center mesh level count, num levels used for the center mesh
+		Encode level index into G vertex color. Encode geomorphing blending 
+		factors into R and B. 
+		This will be large mesh, most polys out of view. Minimize offscreen 
+		tris by splitting mesh into 5 parts. Center mesh with Lc levels, and 
+		four-sided meshes with levels from Lc + 1 to L. Center always visible,
+		sides will need to be tested. 
+		If FOV is very narrow, splitting into more submeshes should be speedup 
+		Note that terrain parameters will significantly affect performance 
+	CPU:
+		Need to calc per-resolution level snapping. 
+		Each res lvl snap value is its edge size. 
+		A terrain render position is snapped to a double level Q size so that 
+		each level is aligned with a higher level. The VS will snap all verts' 
+		X and Z positions to a vertex level snap position 
+		CODE:
+			float snapValue = Q; //Q = edge size
+			float snapMax = 2 * snapValue;
+			posSnap0.x = floor(cameraPos.x / snapMax + 0.01f) * snapMax;
+			posSnap0.z = floor(cameraPos.z / snapMax + 0.01f) * snapMax;
+			float levelSnap = snapValue
+			
+			TerainParams[0].z = posSnap0.x - cameraPos.x;
+			TerainParams[0].w = posSnap0.z - cameraPos.z;
+			
+			for(int i = 1; i < levels; ++i)
+			{
+				levelSnap = levelSnap * 2;
+				float twoLevelSnap = 2 * levelSnap;
+				
+				Vector lSnap;
+				lSnap.x = floor(posSnap0.x / twoLevelSnap + 0.01f ) * twoLevelSnap;
+				lSnap.z = floor(posSnap0.z / twoLevelSnap + 0.01f ) * twoLevelSnap;
+				
+				TerainParams[i].x = lSnap.x - posSnap0.x;
+				TerainParams[i].y = lSnap.z - posSnap0.z;
+				TerainParams[i].z = lSnap.x - cameraPos.x;
+				TerainParams[i].w = lSnap.z - cameraPos.z;
+			} 
+	VERTEX:
+		Does texture fetch
+		Calculates worldspace pos 
+		Calculates level resolution shift 
+		Calculate geomorphing parameters and blending factors
+		CODE: 
+			float4 pos0 = TerainParams[something]
+			float4 size0 = TerainParams[something]
+			
+			float4 worldPos = input.pos 
+			int level = input.tex.g //fetch level
+			worldPos.xz += TerainParams[level].xy //shift 
+			
+			int xMid = input.tex.r;
+			int zMid = input.tex.b;
+			float geomorph = input.tex.a; 
+			
+			float levelSize = input.tex2.x;
+			float levelSize2 = input.tex2.y;
+			
+			output.color0 = 1;
+			
+			float4 posTerrain = worldPos; 
+			posTerrain = (posTerrain - pos0) / size0;
+			output.tex.xy = posTerrain.xz; 
+			
+			float4 geox = worldPos;
+			float4 geo0 = worldPos;
+			float4 geo1 = worldPos;
+			
+			geox = (geox - pos0) / size0;
+			output.tex.xy.geox.xz; 
+			
+			//Sample center height
+			float height = tex2DLod(Sampler, float4(geox.x, geox.z, 0, 0)).r;
+			height = height * size0.y + pos0.y; 
+			
+			//Geomorphing
+			if(geomorph > 0)
+			{
+				float geosnap = levelSize;
+				
+				if(xMid)
+				{
+					geo0.x -= geosnap;
+					geo1.x += geosnap;
+				}
+				
+				if(zMid)
+				{
+					geo0.z -= geosnap;
+					geo1.z += geosnap;
+				}
+				
+				geo0 = (geo0 - pos0) / size0;
+				geo1 = (geo1 - pos0) / size0;
+				
+				float height0 = tex2DLod(Sampler, float4(geo0.x, geo0.z, 0, 0)).r;
+				float height1 = tex2DLod(Sampler, float4(geo1.x, geo1.z, 0, 0)).r;
+				
+				//apply geomorph
+				float heightGeo = (height0 + height1) * 0.5 * size0.y + pos0.y;
+				worldPos.y = lerp(height, heightGeo, geomorph);
+			}
+			else
+			{
+				worldPos.y = height;
+			}
+			
+			worldPos.w = 1;
+			output.pos = mul(worldPos, MVP);
+		DYNAMIC MODIFICATION:
+			Create a small temp modification render texture used as a ping-pong
+			data buffer. 
+			Use mod RT as Render Target and maintex as ss a source, copy the 
+			modified location of the main mesh into the modification tex with 
+			a plain data copy. 
+			Next, use main tex as render target and modification as source. 
+			Render only modified parts of the modified texture back on to the
+			main texture source. Apply whatever modifiation shader to this re-
+			render for whatever dynamic shit you wanna do. 
+			PLOW MODIFICATION SHADER: 
+				Use texture query to measure how much volume the plow would 
+				remove (vol displaced from last plow location). Then apply a 
+				special plow distribution mask to add displaced vol in front 
+				of the plow.
+			EROSION MODIFICATION SHADER: 
+				Most important terrain modification. Done everywhere every few
+				seconds to smooth the terrain and apply a more natural look. 
+				To erode, sum target pixel height deltas for neighbors, 
+				perform a height adjustment acccording to pixel flowability, 
+				and throw in some randomness for a more natural look. 
+		PROBLEMS:
+			NORMALS ON CLIFFS:
+				Normals are calculated per pixel with the original data and 
+				a fixed offset (pos offset to calculate slope). 
+				Problem occurs where cliffs form. The tri topology is very 
+				different between high and low details, and thus normals appear 
+				detached. 
+			INCONSISTENT TEXTURE COPY PIXEL OFFSET 
+				Per Pixel texture offset might be linked to device resolution 
+				for some reason? If this happens, your ping-pong texture ops 
+				will look very bad/wrong. You might need to do an 
+				initialization step to find a correct pixel offset for a 
+				particular
+		

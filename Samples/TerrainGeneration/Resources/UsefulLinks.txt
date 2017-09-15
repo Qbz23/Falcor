@@ -1,0 +1,17 @@
+NVIDIA GPU Water Tesselation 
+https://www.geforce.com/games-applications/pc-applications/fermi-water-demo
+
+Simple tesellation example 
+http://recreationstudios.blogspot.com/2010/03/simple-tessellation-example.html
+
+How To: Design a Hull Shader 
+https://msdn.microsoft.com/en-us/library/windows/desktop/ff476339(v=vs.85).aspx
+
+Tesselation Stages 
+https://msdn.microsoft.com/en-us/library/windows/desktop/ff476340(v=vs.85).aspx
+
+Adding Tesselation to a Terrain Renderer
+http://thedemonthrone.ca/projects/rendering-terrain/rendering-terrain-part-8-adding-tessellation/
+
+ORCA: Open Research Content Archive 
+https://developer.nvidia.com/orca
