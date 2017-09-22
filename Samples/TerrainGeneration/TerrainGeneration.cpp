@@ -3,16 +3,53 @@
 void TerrainGeneration::onGuiRender()
 {
 	mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
+	mpGui->addIntVar("Tesselation Factor", tessellationFactor);
+	mpProgramVars->getConstantBuffer(0, 2, 0)->setBlob(&tessellationFactor, 0, sizeof(int));
+}
+
+void TerrainGeneration::CreateQuad()
+{
+	//Just in NDC. Not doing any transformation
+	const Vertex kQuadVertices[] =
+	{	//Only work for DX. See FullScreenPass.cpp line 60
+		//for macro so that it also works with vulkan
+		{ glm::vec2(-1, 1), glm::vec2(0, 0) },
+		{ glm::vec2(-1, -1), glm::vec2(0, 1) },
+		{ glm::vec2(1, 1), glm::vec2(1, 0) },
+		{ glm::vec2(1, -1), glm::vec2(1, 1) },
+	};
+
+	//create VB and VAO
+	const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(kQuadVertices));
+	mpQuadVertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex, 
+						Buffer::CpuAccess::Write, (void*)kQuadVertices);
+
+	//create VAO
+	VertexLayout::SharedPtr pLayout = VertexLayout::create();
+	VertexBufferLayout::SharedPtr pBufLayout = VertexBufferLayout::create();
+	pBufLayout->addElement("POSITION", 0, ResourceFormat::RG32Float, 1, 0);
+	pBufLayout->addElement("TEXCOORD", 8, ResourceFormat::RG32Float, 1, 1);
+	pLayout->addBufferLayout(0, pBufLayout);
+	Vao::BufferVec buffers{ mpQuadVertexBuffer };
+	mpQuadVao = Vao::create(Vao::Topology::Patch, pLayout, buffers);
 }
 
 void TerrainGeneration::onLoad()
 {
-	//Create needed things to view scene
+	//Full Screen Quad VAO
+	CreateQuad();
+
+	//Camera
 	mpCamera = Camera::create();
 	mCamController.attachCamera(mpCamera);
-	mpProgram = GraphicsProgram::createFromFile("", appendShaderExtension("ModelViewer.ps"));
-	mpModel = Model::createFromFile("teapot.obj", Model::LoadFlags::None);
-	mpLight = DirectionalLight::create();
+
+	//Shader
+	mpProgram = GraphicsProgram::createFromFile(
+		appendShaderExtension("TesellationIntro.vs"), 
+		appendShaderExtension("TesellationIntro.ps"),
+		"", 
+		appendShaderExtension("TesellationIntro.hs"),
+		appendShaderExtension("TesellationIntro.ds"));
 
 	//create a wireframe rasterizer state
 	RasterizerState::Desc wireframeDesc;
@@ -24,7 +61,7 @@ void TerrainGeneration::onLoad()
 	mpProgramVars = GraphicsVars::create(mpProgram->getActiveVersion()->getReflector());
 	mpGraphicsState = GraphicsState::create();
 	mpGraphicsState->setRasterizerState(mpWireframeRS);
-	mpGraphicsState->setProgram(mpProgram);
+	mpGraphicsState->setVao(mpQuadVao);
 }
 
 void TerrainGeneration::onFrameRender()
@@ -33,15 +70,15 @@ void TerrainGeneration::onFrameRender()
 	mpGraphicsState->setFbo(mpDefaultFBO);
 	mCamController.update();
 
-	if (mpModel)
+	if (mpQuadVao)
 	{
-		mpLight->setIntoConstantBuffer(mpProgramVars["PerFrameCB"].get(), "gDirLight");
 		mpGraphicsState->setProgram(mpProgram);
 		mpRenderContext->setGraphicsState(mpGraphicsState);
 		mpRenderContext->setGraphicsVars(mpProgramVars);
-		ModelRenderer::render(mpRenderContext.get(), mpModel, mpCamera.get());
+		mpRenderContext->draw(4, 0);
 	}
 
+	//Todo this is rendering double text. Not sure why.
 	renderText(getFpsMsg(), glm::vec2(10, 30));
 }
 

@@ -6,4 +6,23 @@
   <ItemGroup>
     <ClInclude Include="TerrainGeneration.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Data">
+      <UniqueIdentifier>{b3f1ef16-e956-47c8-9ff2-5551f0fa6dc4}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Data\TesellationIntro.ds.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TesellationIntro.hs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TesellationIntro.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TesellationIntro.vs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+  </ItemGroup>
 </Project>

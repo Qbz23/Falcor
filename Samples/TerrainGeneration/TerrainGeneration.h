@@ -15,6 +15,16 @@ public:
 	void onGuiRender() override;
 
 private:
+	struct Vertex
+	{
+		glm::vec2 screenPos;
+		glm::vec2 texCoord;
+	};
+
+	void CreateQuad();
+	Buffer::SharedPtr mpQuadVertexBuffer;
+	Vao::SharedPtr mpQuadVao;
+
 	Camera::SharedPtr mpCamera;
 	FirstPersonCameraController mCamController;
 	
@@ -26,5 +36,6 @@ private:
 	GraphicsProgram::SharedPtr mpProgram;
 	RasterizerState::SharedPtr mpWireframeRS;
 
-	vec4 mClearColor = vec4(0.5f, 0.5f, 0.5f, 1.0f);
+	vec4 mClearColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	int tessellationFactor = 32;
 };
