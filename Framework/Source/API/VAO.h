@@ -50,7 +50,8 @@ namespace Falcor
             LineList,
             LineStrip,
             TriangleList,
-            TriangleStrip
+            TriangleStrip,
+            Patch
         };
 
         struct ElementDesc
