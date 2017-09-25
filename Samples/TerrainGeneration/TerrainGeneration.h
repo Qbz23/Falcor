@@ -21,6 +21,13 @@ private:
 		glm::vec2 texCoord;
 	};
 
+	struct HullPerFrame
+	{
+		float edgeFactors[4] = { 32, 32, 32, 32 };
+		float insideFactors[2] = { 32, 32 };
+		glm::vec2 padding;
+	} mHullPerFrame;
+
 	void CreateQuad();
 	Buffer::SharedPtr mpQuadVertexBuffer;
 	Vao::SharedPtr mpQuadVao;

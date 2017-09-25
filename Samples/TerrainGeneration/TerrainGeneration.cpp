@@ -2,9 +2,38 @@
 
 void TerrainGeneration::onGuiRender()
 {
+	static const int intMax = std::numeric_limits<int>().max();
+
 	mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
-	mpGui->addIntVar("Tesselation Factor", tessellationFactor);
-	mpProgramVars->getConstantBuffer(0, 2, 0)->setBlob(&tessellationFactor, 0, sizeof(int));
+
+	//Edge factors
+	//for (int i = 0; i < 4; ++i)
+	//{
+	//	std::string name = "Edge" + std::to_string(i);
+	//	mpGui->addIntVar(name.c_str(), mHullPerFrame.edgeFactors[i], -intMax, intMax, 1, false);
+	//}
+
+	////Inside Factors 
+	//for (int j = 0; j < 2; ++j)
+	//{
+	//	std::string name = "Inside" + std::to_string(j);
+	//	mpGui->addIntVar(name.c_str(), mHullPerFrame.insideFactors[j], -intMax, intMax, 1, false);
+	//}
+
+	//Send up cbuffer
+	int size = sizeof(HullPerFrame);
+	auto cbuf = mpProgramVars->getConstantBuffer(0, 0, 0); 
+	int edgeFactorSize = arraysize(mHullPerFrame.edgeFactors);
+	cbuf->setBlob(&mHullPerFrame.edgeFactors[0], 0, sizeof(float));
+	cbuf->setBlob(&mHullPerFrame.edgeFactors[1], sizeof(float), sizeof(float));
+	cbuf->setBlob(&mHullPerFrame.edgeFactors[2], 2 * sizeof(float), sizeof(float));
+	cbuf->setBlob(&mHullPerFrame.edgeFactors[3], 3 * sizeof(float), sizeof(float));
+
+	//cbuf->setBlob(&mHullPerFrame.insideFactors, 4 * sizeof(float), arraysize(mHullPerFrame.edgeFactors));
+	/*mpProgramVars->getConstantBuffer(0, 2, 0)->setVariableArray("edgeFactor",
+		mHullPerFrame.edgeFactors, arraysize(mHullPerFrame.edgeFactors));
+	mpProgramVars->getConstantBuffer(0, 2, 0)->setVariableArray("insideFactor",
+		mHullPerFrame.insideFactors, arraysize(mHullPerFrame.insideFactors));*/
 }
 
 void TerrainGeneration::CreateQuad()
@@ -19,7 +48,7 @@ void TerrainGeneration::CreateQuad()
 		{ glm::vec2(1, -1), glm::vec2(1, 1) },
 	};
 
-	//create VB and VAO
+	//create VB
 	const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(kQuadVertices));
 	mpQuadVertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex, 
 						Buffer::CpuAccess::Write, (void*)kQuadVertices);

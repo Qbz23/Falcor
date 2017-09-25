@@ -1,6 +1,10 @@
-cbuffer HSPerFrame : register(b2)
+cbuffer HSPerFrame : register(b0)
 {
-	int factor;
+	float edgeFactor0;
+	float edgeFactor1;
+	float edgeFactor2;
+	float edgeFactor3;
+	float insideFactor[2];
 };
 
 struct VS_OUT
@@ -35,16 +39,17 @@ HS_CONST_OUT HSConstant(InputPatch<VS_OUT, 4> ip, uint pid : SV_PrimitiveID)
 {
 	HS_CONST_OUT output;
 
-	float edge = factor;
-	float inside = factor;
-
-	[unroll(4)]
-	for (int i = 0; i < 4; ++i)
-		output.edges[i] = edge;
+	//[unroll(4)]
+	//for (int i = 0; i < 4; ++i)
+	//	output.edges[i] = edgeFactor[i];
+	output.edges[0] = edgeFactor0;
+	output.edges[1] = edgeFactor1;
+	output.edges[2] = edgeFactor2;
+	output.edges[3] = edgeFactor3;
 
 	[unroll(2)]
 	for (int j = 0; j < 2; ++j)
-		output.inside[j] = inside;
+		output.inside[j] = 4;
 
 	return output;
 }
