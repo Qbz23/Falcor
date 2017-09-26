@@ -23,8 +23,8 @@ private:
 
 	struct HullPerFrame
 	{
-		float edgeFactors[4] = { 32, 32, 32, 32 };
-		float insideFactors[2] = { 32, 32 };
+		glm::vec4 edgeFactors = vec4(32, 32, 32, 32);
+		glm::vec2 insideFactors = vec2(32, 32);
 		glm::vec2 padding;
 	} mHullPerFrame;
 

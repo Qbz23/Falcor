@@ -5,35 +5,13 @@ void TerrainGeneration::onGuiRender()
 	static const int intMax = std::numeric_limits<int>().max();
 
 	mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
-
-	//Edge factors
-	//for (int i = 0; i < 4; ++i)
-	//{
-	//	std::string name = "Edge" + std::to_string(i);
-	//	mpGui->addIntVar(name.c_str(), mHullPerFrame.edgeFactors[i], -intMax, intMax, 1, false);
-	//}
-
-	////Inside Factors 
-	//for (int j = 0; j < 2; ++j)
-	//{
-	//	std::string name = "Inside" + std::to_string(j);
-	//	mpGui->addIntVar(name.c_str(), mHullPerFrame.insideFactors[j], -intMax, intMax, 1, false);
-	//}
+  mpGui->addFloat4Var("edge", mHullPerFrame.edgeFactors, 1, 64);
+  mpGui->addFloat2Var("inside", mHullPerFrame.insideFactors, 1, 64);
 
 	//Send up cbuffer
 	int size = sizeof(HullPerFrame);
 	auto cbuf = mpProgramVars->getConstantBuffer(0, 0, 0); 
-	int edgeFactorSize = arraysize(mHullPerFrame.edgeFactors);
-	cbuf->setBlob(&mHullPerFrame.edgeFactors[0], 0, sizeof(float));
-	cbuf->setBlob(&mHullPerFrame.edgeFactors[1], sizeof(float), sizeof(float));
-	cbuf->setBlob(&mHullPerFrame.edgeFactors[2], 2 * sizeof(float), sizeof(float));
-	cbuf->setBlob(&mHullPerFrame.edgeFactors[3], 3 * sizeof(float), sizeof(float));
-
-	//cbuf->setBlob(&mHullPerFrame.insideFactors, 4 * sizeof(float), arraysize(mHullPerFrame.edgeFactors));
-	/*mpProgramVars->getConstantBuffer(0, 2, 0)->setVariableArray("edgeFactor",
-		mHullPerFrame.edgeFactors, arraysize(mHullPerFrame.edgeFactors));
-	mpProgramVars->getConstantBuffer(0, 2, 0)->setVariableArray("insideFactor",
-		mHullPerFrame.insideFactors, arraysize(mHullPerFrame.insideFactors));*/
+  cbuf->setBlob(&mHullPerFrame, 0, size);
 }
 
 void TerrainGeneration::CreateQuad()
