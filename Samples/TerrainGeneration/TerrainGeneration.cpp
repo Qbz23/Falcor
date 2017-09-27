@@ -6,10 +6,14 @@ const Gui::DropdownList TerrainGeneration::kModeDropDown
   { (int32_t)Mode::Displacement, "Displacement Mapping" }
 };
 
+void TerrainGeneration::LoadModel(std::string filename)
+{
+  Model::LoadFlags flags = Model::LoadFlags();
+  mpModel = Model::createFromFile(filename.c_str());
+}
 
 void TerrainGeneration::onGuiRender()
 {
-
 	static const int intMax = std::numeric_limits<int>().max();
 
   uint32_t iMode = (uint32_t)mMode;
@@ -25,7 +29,14 @@ void TerrainGeneration::onGuiRender()
       varsDirty = mpGui->addFloat2Var("inside", mHullPerFrame.insideFactors, 1, 64) || varsDirty;
       break;
     case Displacement:
-      mpGui->addText("Stuff will be here eventually");
+      if(mpGui->addButton("Load Model"))
+      {
+        std::string filename;
+        if (openFileDialog(Model::kSupportedFileFormatsStr, filename))
+        {
+          mpModel = Model::createFromFile(filename.c_str());
+        }
+      }
       break;
     default:
       should_not_get_here();
@@ -46,7 +57,7 @@ void TerrainGeneration::CreateQuad()
 
 	//create VB
 	const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(kQuadVertices));
-	mpQuadVertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex, 
+	auto vertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex, 
 						Buffer::CpuAccess::Write, (void*)kQuadVertices);
 
 	//create input layout
@@ -57,7 +68,7 @@ void TerrainGeneration::CreateQuad()
 	pLayout->addBufferLayout(0, pBufLayout);
 
   //create vao
-	Vao::BufferVec buffers{ mpQuadVertexBuffer };
+	Vao::BufferVec buffers{ vertexBuffer };
 	mpQuadVao = Vao::create(Vao::Topology::Patch, pLayout, buffers);
 }
 
@@ -67,10 +78,20 @@ void TerrainGeneration::UpdateVars()
   {
     varsDirty = false;
 
-    //Send up cbuffer
-    int size = sizeof(HullPerFrame);
-    auto cbuf = mpProgramVars->getConstantBuffer(0, 0, 0);
-    cbuf->setBlob(&mHullPerFrame, 0, size);
+    switch(mMode)
+    {
+      case Intro:
+      {
+        int size = sizeof(HullPerFrame);
+        auto cbuf = mpTessIntroProgramVars->getConstantBuffer(0, 0, 0);
+        cbuf->setBlob(&mHullPerFrame, 0, size);
+        break;
+      }
+      case Displacement:
+        break;
+      default:
+        should_not_get_here();
+    }
   }
 }
 
@@ -83,22 +104,30 @@ void TerrainGeneration::onLoad()
 	mpCamera = Camera::create();
 	mCamController.attachCamera(mpCamera);
 
-	//Shader
-	mpProgram = GraphicsProgram::createFromFile(
+	//Intro to tess shader
+  mpTessIntroProgram = GraphicsProgram::createFromFile(
 		appendShaderExtension("TesellationIntro.vs"), 
 		appendShaderExtension("TesellationIntro.ps"),
 		"", 
 		appendShaderExtension("TesellationIntro.hs"),
 		appendShaderExtension("TesellationIntro.ds"));
+  mpTessIntroProgramVars = GraphicsVars::create(mpTessIntroProgram->getActiveVersion()->getReflector());
 
-	//create a wireframe rasterizer state
+  //Displacement map shader
+  mpDisplacementProgram = GraphicsProgram::createFromFile(
+    "",
+    appendShaderExtension("ModelViewer.ps"));
+  mpDisplacementVars = GraphicsVars::create(mpDisplacementProgram->getActiveVersion()->getReflector());
+
+  //create default rasterizer state
+  mpDefaultRS = RasterizerState::create(RasterizerState::Desc());
+	//create wireframe rasterizer state
 	RasterizerState::Desc wireframeDesc;
 	wireframeDesc.setFillMode(RasterizerState::FillMode::Wireframe);
 	wireframeDesc.setCullMode(RasterizerState::CullMode::None);
 	mpWireframeRS = RasterizerState::create(wireframeDesc);
 
-	//other misc needed things 
-	mpProgramVars = GraphicsVars::create(mpProgram->getActiveVersion()->getReflector());
+  //Graphics state
 	mpGraphicsState = GraphicsState::create();
 	mpGraphicsState->setRasterizerState(mpWireframeRS);
 	mpGraphicsState->setVao(mpQuadVao);
@@ -110,15 +139,41 @@ void TerrainGeneration::onFrameRender()
 	mpGraphicsState->setFbo(mpDefaultFBO);
 	mCamController.update();
 
-	if (mpQuadVao)
-	{
-    UpdateVars();
+  switch(mMode)
+  {
+    case Mode::Intro:
+    {
+	    if (mpQuadVao)
+	    {
+        UpdateVars();
 
-		mpGraphicsState->setProgram(mpProgram);
-		mpRenderContext->setGraphicsState(mpGraphicsState);
-		mpRenderContext->setGraphicsVars(mpProgramVars);
-		mpRenderContext->draw(4, 0);
-	}
+		    mpGraphicsState->setProgram(mpTessIntroProgram);
+		    mpRenderContext->pushGraphicsState(mpGraphicsState);
+		    mpRenderContext->pushGraphicsVars(mpTessIntroProgramVars);
+		    mpRenderContext->draw(4, 0);
+        mpRenderContext->popGraphicsVars();
+        mpRenderContext->popGraphicsState();
+	    }
+      break;
+    }
+    case Mode::Displacement:
+    {
+      if(mpModel)
+      {
+        UpdateVars();
+
+        mpGraphicsState->setProgram(mpDisplacementProgram);
+        mpRenderContext->pushGraphicsState(mpGraphicsState);
+        mpRenderContext->pushGraphicsVars(mpDisplacementVars);
+        ModelRenderer::render(mpRenderContext.get(), mpModel, mpCamera.get()); 
+        mpRenderContext->popGraphicsVars();
+        mpRenderContext->popGraphicsState();
+      }
+      break;
+    }
+    default:
+      should_not_get_here();
+  }
 
 	//Todo this is rendering double text. Not sure why.
 	renderText(getFpsMsg(), glm::vec2(10, 30));

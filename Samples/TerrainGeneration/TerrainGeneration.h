@@ -32,24 +32,29 @@ private:
   static const Gui::DropdownList kModeDropDown;
   Mode mMode = Intro;
 
+  void LoadModel(std::string filename);
 	void CreateQuad();
   //makes sure they get set at least once on first frame
   bool varsDirty = true;
   void UpdateVars();
 
-	Buffer::SharedPtr mpQuadVertexBuffer;
 	Vao::SharedPtr mpQuadVao;
+  Model::SharedPtr mpModel;
 
 	Camera::SharedPtr mpCamera;
 	FirstPersonCameraController mCamController;
-	
-	Model::SharedPtr mpModel;
 	DirectionalLight::SharedPtr mpLight;
 
+
 	GraphicsState::SharedPtr mpGraphicsState;
-	GraphicsVars::SharedPtr mpProgramVars;
-	GraphicsProgram::SharedPtr mpProgram;
-	RasterizerState::SharedPtr mpWireframeRS;
+  RasterizerState::SharedPtr mpWireframeRS;
+  RasterizerState::SharedPtr mpDefaultRS;
+
+  GraphicsProgram::SharedPtr mpDisplacementProgram;
+  GraphicsVars::SharedPtr mpDisplacementVars;
+
+	GraphicsProgram::SharedPtr mpTessIntroProgram;
+  GraphicsVars::SharedPtr mpTessIntroProgramVars;
 
 	vec4 mClearColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	int tessellationFactor = 32;
