@@ -28,7 +28,15 @@ private:
 		glm::vec2 padding;
 	} mHullPerFrame;
 
+  enum Mode { Intro, Displacement };
+  static const Gui::DropdownList kModeDropDown;
+  Mode mMode = Intro;
+
 	void CreateQuad();
+  //makes sure they get set at least once on first frame
+  bool varsDirty = true;
+  void UpdateVars();
+
 	Buffer::SharedPtr mpQuadVertexBuffer;
 	Vao::SharedPtr mpQuadVao;
 

@@ -1,17 +1,35 @@
 #include "TerrainGeneration.h"
 
+const Gui::DropdownList TerrainGeneration::kModeDropDown
+{
+  { (int32_t)Mode::Intro, "Intro to Tessellation" },
+  { (int32_t)Mode::Displacement, "Displacement Mapping" }
+};
+
+
 void TerrainGeneration::onGuiRender()
 {
+
 	static const int intMax = std::numeric_limits<int>().max();
 
+  uint32_t iMode = (uint32_t)mMode;
+  mpGui->addDropdown("Mode", kModeDropDown, iMode);
+  mMode = (Mode)iMode;
 	mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
-  mpGui->addFloat4Var("edge", mHullPerFrame.edgeFactors, 1, 64);
-  mpGui->addFloat2Var("inside", mHullPerFrame.insideFactors, 1, 64);
+  mpGui->addSeparator();
 
-	//Send up cbuffer
-	int size = sizeof(HullPerFrame);
-	auto cbuf = mpProgramVars->getConstantBuffer(0, 0, 0); 
-  cbuf->setBlob(&mHullPerFrame, 0, size);
+  switch(mMode)
+  {
+    case Intro:
+      varsDirty = mpGui->addFloat4Var("edge", mHullPerFrame.edgeFactors, 1, 64);
+      varsDirty = mpGui->addFloat2Var("inside", mHullPerFrame.insideFactors, 1, 64) || varsDirty;
+      break;
+    case Displacement:
+      mpGui->addText("Stuff will be here eventually");
+      break;
+    default:
+      should_not_get_here();
+  }
 }
 
 void TerrainGeneration::CreateQuad()
@@ -31,14 +49,29 @@ void TerrainGeneration::CreateQuad()
 	mpQuadVertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex, 
 						Buffer::CpuAccess::Write, (void*)kQuadVertices);
 
-	//create VAO
+	//create input layout
 	VertexLayout::SharedPtr pLayout = VertexLayout::create();
 	VertexBufferLayout::SharedPtr pBufLayout = VertexBufferLayout::create();
 	pBufLayout->addElement("POSITION", 0, ResourceFormat::RG32Float, 1, 0);
 	pBufLayout->addElement("TEXCOORD", 8, ResourceFormat::RG32Float, 1, 1);
 	pLayout->addBufferLayout(0, pBufLayout);
+
+  //create vao
 	Vao::BufferVec buffers{ mpQuadVertexBuffer };
 	mpQuadVao = Vao::create(Vao::Topology::Patch, pLayout, buffers);
+}
+
+void TerrainGeneration::UpdateVars()
+{
+  if(varsDirty)
+  {
+    varsDirty = false;
+
+    //Send up cbuffer
+    int size = sizeof(HullPerFrame);
+    auto cbuf = mpProgramVars->getConstantBuffer(0, 0, 0);
+    cbuf->setBlob(&mHullPerFrame, 0, size);
+  }
 }
 
 void TerrainGeneration::onLoad()
@@ -79,6 +112,8 @@ void TerrainGeneration::onFrameRender()
 
 	if (mpQuadVao)
 	{
+    UpdateVars();
+
 		mpGraphicsState->setProgram(mpProgram);
 		mpRenderContext->setGraphicsState(mpGraphicsState);
 		mpRenderContext->setGraphicsVars(mpProgramVars);
