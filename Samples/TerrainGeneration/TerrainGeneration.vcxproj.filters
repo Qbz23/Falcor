@@ -24,5 +24,8 @@
     <FxCompile Include="Data\TesellationIntro.vs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\Displacement.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

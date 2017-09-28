@@ -29,26 +29,39 @@ private:
 	} mHullPerFrame;
 
   enum Mode { Intro, Displacement };
-  static const Gui::DropdownList kModeDropDown;
+  static const Gui::DropdownList kModeDropdown;
   Mode mMode = Intro;
+  static const Gui::DropdownList kTexturesDropdown;
 
   void LoadModel(std::string filename);
+  void LoadTextures();
+
 	void CreateQuad();
   //makes sure they get set at least once on first frame
   bool varsDirty = true;
   void UpdateVars();
 
+  //Geometry stuff
 	Vao::SharedPtr mpQuadVao;
   Model::SharedPtr mpModel;
 
+  //Texture stuff
+  static const uint32_t kNumTextures = 5;
+  uint32_t textureIndex = 0;
+  // {"Checkerboard", "Links", "Quilt", "Spiral", "Tiles"}
+  static const std::string mTextureNames[kNumTextures];
+  Texture::SharedPtr mDiffuseMaps[kNumTextures];
+  Texture::SharedPtr mNormalMaps[kNumTextures];
+  Texture::SharedPtr mDisplacementMaps[kNumTextures];
+
 	Camera::SharedPtr mpCamera;
 	FirstPersonCameraController mCamController;
-	DirectionalLight::SharedPtr mpLight;
-
+  vec3 mLightDir = vec3(0, 0, -1);
 
 	GraphicsState::SharedPtr mpGraphicsState;
   RasterizerState::SharedPtr mpWireframeRS;
   RasterizerState::SharedPtr mpDefaultRS;
+  bool hasWireframeRs = true;
 
   GraphicsProgram::SharedPtr mpDisplacementProgram;
   GraphicsVars::SharedPtr mpDisplacementVars;
