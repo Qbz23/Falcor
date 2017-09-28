@@ -54,7 +54,8 @@ private:
   Texture::SharedPtr mNormalMaps[kNumTextures];
   Texture::SharedPtr mDisplacementMaps[kNumTextures];
 
-	Camera::SharedPtr mpCamera;
+  Scene::SharedPtr mpScene;
+  SceneRenderer::SharedPtr mpSceneRenderer;
 	FirstPersonCameraController mCamController;
   vec3 mLightDir = vec3(0, 0, -1);
 

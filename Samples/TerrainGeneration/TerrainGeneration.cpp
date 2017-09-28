@@ -62,18 +62,38 @@ void TerrainGeneration::onGuiRender()
       varsDirty = mpGui->addFloat2Var("inside", mHullPerFrame.insideFactors, 1, 64) || varsDirty;
       break;
     case Displacement:
+    {
       if(mpGui->addButton("Load Model"))
       {
         std::string filename;
         if (openFileDialog(Model::kSupportedFileFormatsStr, filename))
         {
           mpModel = Model::createFromFile(filename.c_str());
+          if(mpModel)
+          {
+            mpScene->deleteAllModels();
+            mpScene->addModelInstance(mpModel, "MainModel");
+          }
         }
       }
+
+      if(mpModel)
+      {
+        //should i get this at load and cache? could just check model inst
+        //is 0, 0 even always gonna be correct?
+        auto modelInst = mpScene->getModelInstance(0, 0);
+        auto rot = modelInst->getRotation();
+        mpGui->addFloatVar("RotX", rot.x);
+        mpGui->addFloatVar("RotY", rot.y);
+        mpGui->addFloatVar("RotZ", rot.z);
+        modelInst->setRotation(rot);
+      }
+
       varsDirty = mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex) || varsDirty;
       varsDirty = mpGui->addFloat3Var("LightDir", mLightDir) || varsDirty;
 
       break;
+    }
     default:
       should_not_get_here();
   }
@@ -127,7 +147,8 @@ void TerrainGeneration::UpdateVars()
       {
         auto cbuf = mpDisplacementVars->getConstantBuffer(0, 0, 0);
         cbuf->setBlob(&mLightDir, 0, sizeof(vec3));
-        mpDisplacementVars->setSrv(0, 0, 0, mNormalMaps[textureIndex]->getSRV());
+        mpDisplacementVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
+        mpDisplacementVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
         break;
       }
       default:
@@ -138,6 +159,10 @@ void TerrainGeneration::UpdateVars()
 
 void TerrainGeneration::onLoad()
 {
+  mpScene = Scene::create();
+  mpScene->addCamera(Camera::create());
+  mpSceneRenderer = SceneRenderer::create(mpScene);
+
 	//Full Screen Quad VAO
 	CreateQuad();
 
@@ -145,8 +170,7 @@ void TerrainGeneration::onLoad()
   LoadTextures();
 
 	//Camera
-	mpCamera = Camera::create();
-	mCamController.attachCamera(mpCamera);
+	mCamController.attachCamera(mpScene->getActiveCamera());
 
 	//Intro to tess shader
   mpTessIntroProgram = GraphicsProgram::createFromFile(
@@ -204,13 +228,12 @@ void TerrainGeneration::onFrameRender()
     {
       if(mpModel)
       {
-        varsDirty = varsDirty || mpCamera->isDirty();
         UpdateVars();
 
         mpGraphicsState->setProgram(mpDisplacementProgram);
         mpRenderContext->pushGraphicsState(mpGraphicsState);
         mpRenderContext->pushGraphicsVars(mpDisplacementVars);
-        ModelRenderer::render(mpRenderContext.get(), mpModel, mpCamera.get()); 
+        mpSceneRenderer->renderScene(mpRenderContext.get());
         mpRenderContext->popGraphicsVars();
         mpRenderContext->popGraphicsState();
       }
@@ -259,9 +282,10 @@ void TerrainGeneration::onResizeSwapChain()
 	float height = (float)mpDefaultFBO->getHeight();
 	float width = (float)mpDefaultFBO->getWidth();
 
-	mpCamera->setFocalLength(21.0f);
+  auto camera = mpScene->getActiveCamera();
+	camera->setFocalLength(21.0f);
 	float aspectRatio = (width / height);
-	mpCamera->setAspectRatio(aspectRatio);
+  camera->setAspectRatio(aspectRatio);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
