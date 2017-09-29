@@ -49,9 +49,9 @@ HS_CONST_OUT HSConstant(
 
 	[unroll(3)]
   for (int i = 0; i < 3; ++i)
-    output.edges[i] = 2;//edgeFactors[i];
+    output.edges[i] = edgeFactors[i];
 
-  output.inside = 2;//insideFactor;
+  output.inside = insideFactor;
 
 	return output;
 }

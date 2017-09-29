@@ -7,7 +7,7 @@ const Gui::DropdownList TerrainGeneration::kModeDropdown
 };
 
 const std::string TerrainGeneration::mTextureNames[kNumTextures] =
-{ "Checkerboard", "Links", "Quilt", "Spiral", "Tiles" };
+{ "Checkerboard", "Links", "Quilt", "Spiral", "Tiles", "Clouds" };
 
 const Gui::DropdownList TerrainGeneration::kTexturesDropdown
 {
@@ -15,7 +15,8 @@ const Gui::DropdownList TerrainGeneration::kTexturesDropdown
   { 1, mTextureNames[1] },
   { 2, mTextureNames[2] },
   { 3, mTextureNames[3] },
-  { 4, mTextureNames[4] }
+  { 4, mTextureNames[4] },
+  { 5, mTextureNames[5] }
 };
 
 void TerrainGeneration::LoadModel(std::string filename)
@@ -37,6 +38,7 @@ void TerrainGeneration::LoadTextures()
 void TerrainGeneration::onGuiRender()
 {
 	static const int intMax = std::numeric_limits<int>().max();
+  static const float floatMax = std::numeric_limits<float>().max();
 
   uint32_t iMode = (uint32_t)mMode;
   varsDirty = mpGui->addDropdown("Mode", kModeDropdown, iMode);
@@ -73,6 +75,7 @@ void TerrainGeneration::onGuiRender()
           {
             mpScene->deleteAllModels();
             mpScene->addModelInstance(mpModel, "MainModel");
+            varsDirty = true;
           }
         }
       }
@@ -89,8 +92,15 @@ void TerrainGeneration::onGuiRender()
         modelInst->setRotation(rot);
       }
 
+      //Disp mode tess factors
+      varsDirty = mpGui->addFloat3Var("Edge Factors", mDispHullPerFrame.edgeFactors,
+        -floatMax, floatMax) || varsDirty;
+      varsDirty = mpGui->addFloatVar("Inside Factor", mDispHullPerFrame.insideFactor,
+        -floatMax, floatMax) || varsDirty;
+
       //domain shader cbuf needs to go up no matter what, no reason for affect dirty
       mpGui->addFloatVar("HeightScale", mDispDomainPerFrame.heightScale);
+
       varsDirty = mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex) || varsDirty;
       varsDirty = mpGui->addFloat3Var("LightDir", mLightDir) || varsDirty;
 
@@ -147,8 +157,12 @@ void TerrainGeneration::UpdateVars()
       }
       case Displacement:
       {
-        auto cbuf = mpDisplacementVars->getConstantBuffer(0, 0, 0);
-        cbuf->setBlob(&mLightDir, 0, sizeof(vec3));
+        //hs
+        auto hsCbuf = mpDisplacementVars->getConstantBuffer(0, 1, 0);
+        hsCbuf->setBlob(&mDispHullPerFrame, 0, sizeof(mDispHullPerFrame));
+        //ps
+        auto psCbuf = mpDisplacementVars->getConstantBuffer(0, 0, 0);
+        psCbuf->setBlob(&mLightDir, 0, sizeof(vec3));
         mpDisplacementVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
         mpDisplacementVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
         mpDisplacementVars->setSrv(0, 2, 0, mDisplacementMaps[textureIndex]->getSRV());
@@ -167,7 +181,7 @@ void TerrainGeneration::UpdateVars()
         break;
       case Displacement:
       {
-        //send up mvp 
+        //ds
         auto cBuf = mpDisplacementVars->getConstantBuffer("DsPerFrame");
         mDispDomainPerFrame.viewProj = mpScene->getActiveCamera()->getViewProjMatrix();
         cBuf->setBlob(&mDispDomainPerFrame, 0, sizeof(DispDomainPerFrame));
@@ -281,20 +295,22 @@ void TerrainGeneration::onShutdown()
 bool TerrainGeneration::onKeyEvent(const KeyboardEvent& keyEvent)
 {
 	bool bHandled = mCamController.onKeyEvent(keyEvent);
-	//Leaving this in for now, probably gonna want something similar
-	//if (bHandled == false)
-	//{
-	//	if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
-	//	{
-	//		switch (keyEvent.key)
-	//		{
-	//		case KeyboardEvent::Key::R:
-	//			resetCamera();
-	//			bHandled = true;
-	//			break;
-	//		}
-	//	}
-	//}
+  //Check for R for camera reset
+  if (bHandled == false)
+	{
+		if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
+		{
+			switch (keyEvent.key)
+			{
+      case KeyboardEvent::Key::R:
+         //resets camera
+        mpScene->getActiveCamera()->setPosition(vec3(0, 0, 5));
+        mpScene->getActiveCamera()->setTarget(vec3(0, 0, -1));
+        bHandled = true;
+				break;
+			}
+		}
+	}
 	return bHandled;
 }
 

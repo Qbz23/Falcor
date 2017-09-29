@@ -28,6 +28,13 @@ private:
 		glm::vec2 padding;
 	} mHullPerFrame;
 
+  struct DispHullPerFrame
+  {
+    glm::vec3 edgeFactors = vec3(2, 2, 2);
+    float insideFactor = 2;
+
+  } mDispHullPerFrame;
+
   struct DispDomainPerFrame
   {
     glm::mat4 viewProj = glm::mat4();
@@ -52,9 +59,9 @@ private:
   Model::SharedPtr mpModel;
 
   //Texture stuff
-  static const uint32_t kNumTextures = 5;
+  static const uint32_t kNumTextures = 6;
   uint32_t textureIndex = 0;
-  // {"Checkerboard", "Links", "Quilt", "Spiral", "Tiles"}
+  // {"Checkerboard", "Links", "Quilt", "Spiral", "Tiles", "Clouds"}
   static const std::string mTextureNames[kNumTextures];
   Texture::SharedPtr mDiffuseMaps[kNumTextures];
   Texture::SharedPtr mNormalMaps[kNumTextures];
