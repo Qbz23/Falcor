@@ -440,7 +440,8 @@ namespace Falcor
         return true;
     }
 
-    bool AssimpModelImporter::parseAiSceneNode(const aiNode* pCurrent, const aiScene* pScene, IdToMesh& aiToFalcorMesh)
+    bool AssimpModelImporter::parseAiSceneNode(const aiNode* pCurrent, const aiScene* pScene, 
+      IdToMesh& aiToFalcorMesh, bool forcePatch)
     {
         if (pCurrent->mNumMeshes)
         {
@@ -462,7 +463,7 @@ namespace Falcor
                 if (aiToFalcorMesh.find(aiId) == aiToFalcorMesh.end())
                 {
                     // Cache mesh
-                    aiToFalcorMesh[aiId] = createMesh(pScene->mMeshes[aiId]);
+                    aiToFalcorMesh[aiId] = createMesh(pScene->mMeshes[aiId], forcePatch);
                 }
 
                 mModel.addMeshInstance(aiToFalcorMesh[aiId], aiMatToGLM(transform));
@@ -473,20 +474,20 @@ namespace Falcor
         // visit the children
         for (uint32_t i = 0; i < pCurrent->mNumChildren; i++)
         {
-            b |= parseAiSceneNode(pCurrent->mChildren[i], pScene, aiToFalcorMesh);
+            b |= parseAiSceneNode(pCurrent->mChildren[i], pScene, aiToFalcorMesh, forcePatch);
         }
         return b;
     }
 
-    bool AssimpModelImporter::createDrawList(const aiScene* pScene)
+    bool AssimpModelImporter::createDrawList(const aiScene* pScene, bool forcePatch)
     {
         createAnimationController(pScene);
         IdToMesh aiToFalcorMeshId;
         aiNode* pRoot = pScene->mRootNode;
-        return parseAiSceneNode(pRoot, pScene, aiToFalcorMeshId);
+        return parseAiSceneNode(pRoot, pScene, aiToFalcorMeshId, forcePatch);
     }
 
-    bool AssimpModelImporter::initModel(const std::string& filename)
+    bool AssimpModelImporter::initModel(const std::string& filename, bool forcePatch)
     {
         std::string fullpath;
         if (findFileInDataDirectories(filename, fullpath) == false)
@@ -540,7 +541,7 @@ namespace Falcor
             return false;
         }
 
-        if (createDrawList(pScene) == false)
+        if (createDrawList(pScene, forcePatch) == false)
         {
             logError(std::string("Can't create draw lists for model ") + filename, true);
             return false;
@@ -552,7 +553,8 @@ namespace Falcor
     bool AssimpModelImporter::import(Model& model, const std::string& filename, Model::LoadFlags flags)
     {
         AssimpModelImporter loader(model, flags);
-        return loader.initModel(filename);
+        return loader.initModel(filename, 
+          (flags & Model::LoadFlags::ForcePatchTopology) != Model::LoadFlags::None);
     }
 
     uint32_t AssimpModelImporter::initBone(const aiNode* pCurNode, uint32_t parentID, uint32_t boneID)
@@ -725,7 +727,7 @@ namespace Falcor
         return BoundingBox::fromMinMax(boxMin, boxMax);
     }
 
-    Mesh::SharedPtr AssimpModelImporter::createMesh(const aiMesh* pAiMesh)
+    Mesh::SharedPtr AssimpModelImporter::createMesh(const aiMesh* pAiMesh, bool forcePatch)
     {
         uint32_t vertexCount = pAiMesh->mNumVertices;
         uint32_t indexCount = pAiMesh->mNumFaces * pAiMesh->mFaces[0].mNumIndices;
@@ -771,6 +773,9 @@ namespace Falcor
             topology = Vao::Topology::LineList;
             break;
         case 3:
+          if (forcePatch)
+            topology = Vao::Topology::Patch3;
+          else
             topology = Vao::Topology::TriangleList;
             break;
         default:

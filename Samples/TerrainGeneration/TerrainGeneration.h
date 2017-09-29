@@ -28,6 +28,12 @@ private:
 		glm::vec2 padding;
 	} mHullPerFrame;
 
+  struct DispDomainPerFrame
+  {
+    glm::mat4 viewProj = glm::mat4();
+    float heightScale = 1.0f;
+  } mDispDomainPerFrame;
+
   enum Mode { Intro, Displacement };
   static const Gui::DropdownList kModeDropdown;
   Mode mMode = Displacement;

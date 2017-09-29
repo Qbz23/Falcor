@@ -83,6 +83,9 @@ namespace Falcor
         case Vao::Topology::TriangleList:
             VertsPerPrim = 3;
             break;
+        case Vao::Topology::Patch3:
+            VertsPerPrim = 3;
+            break;
         default:
             should_not_get_here();
         }

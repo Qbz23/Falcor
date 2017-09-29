@@ -68,9 +68,9 @@ namespace Falcor
         AssimpModelImporter(const AssimpModelImporter&) = delete;
         void operator=(const AssimpModelImporter&) = delete;
 
-        bool initModel(const std::string& filename);
-        bool createDrawList(const aiScene* pScene);
-        bool parseAiSceneNode(const aiNode* pCurrent, const aiScene* pScene, IdToMesh& aiToFalcorMesh);
+        bool initModel(const std::string& filename, bool forcePatch = false);
+        bool createDrawList(const aiScene* pScene, bool forcePatch = false);
+        bool parseAiSceneNode(const aiNode* pCurrent, const aiScene* pScene, IdToMesh& aiToFalcorMesh, bool forcePatch = false);
         bool createAllMaterials(const aiScene* pScene, const std::string& modelFolder, bool isObjFile, bool useSrgb);
 
         void createAnimationController(const aiScene* pScene);
@@ -80,7 +80,7 @@ namespace Falcor
 
         Animation::UniquePtr createAnimation(const aiAnimation* pAiAnim);
 
-        Mesh::SharedPtr createMesh(const aiMesh* pAiMesh);
+        Mesh::SharedPtr createMesh(const aiMesh* pAiMesh, bool forcePatch = false);
         VertexLayout::SharedPtr createVertexLayout(const aiMesh* pAiMesh);
         Buffer::SharedPtr createIndexBuffer(const aiMesh* pAiMesh);
         Buffer::SharedPtr createVertexBuffer(const aiMesh* pAiMesh, const VertexBufferLayout* pLayout, const uint8_t* pBoneIds, const vec4* pBoneWeights);

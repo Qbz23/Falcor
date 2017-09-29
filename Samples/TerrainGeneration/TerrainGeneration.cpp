@@ -68,7 +68,7 @@ void TerrainGeneration::onGuiRender()
         std::string filename;
         if (openFileDialog(Model::kSupportedFileFormatsStr, filename))
         {
-          mpModel = Model::createFromFile(filename.c_str());
+          mpModel = Model::createFromFile(filename.c_str(), Model::LoadFlags::ForcePatchTopology);
           if(mpModel)
           {
             mpScene->deleteAllModels();
@@ -89,6 +89,8 @@ void TerrainGeneration::onGuiRender()
         modelInst->setRotation(rot);
       }
 
+      //domain shader cbuf needs to go up no matter what, no reason for affect dirty
+      mpGui->addFloatVar("HeightScale", mDispDomainPerFrame.heightScale);
       varsDirty = mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex) || varsDirty;
       varsDirty = mpGui->addFloat3Var("LightDir", mLightDir) || varsDirty;
 
@@ -125,7 +127,7 @@ void TerrainGeneration::CreateQuad()
 
   //create vao
 	Vao::BufferVec buffers{ vertexBuffer };
-	mpQuadVao = Vao::create(Vao::Topology::Patch, pLayout, buffers);
+	mpQuadVao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
 }
 
 void TerrainGeneration::UpdateVars()
@@ -149,6 +151,26 @@ void TerrainGeneration::UpdateVars()
         cbuf->setBlob(&mLightDir, 0, sizeof(vec3));
         mpDisplacementVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
         mpDisplacementVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
+        mpDisplacementVars->setSrv(0, 2, 0, mDisplacementMaps[textureIndex]->getSRV());
+        break;
+      }
+      default:
+        should_not_get_here();
+    }
+  }
+  //Things that need to happen every frame even if the vars arent dirty (like camera)
+  else
+  {
+    switch (mMode)
+    {
+      case Intro:
+        break;
+      case Displacement:
+      {
+        //send up mvp 
+        auto cBuf = mpDisplacementVars->getConstantBuffer("DsPerFrame");
+        mDispDomainPerFrame.viewProj = mpScene->getActiveCamera()->getViewProjMatrix();
+        cBuf->setBlob(&mDispDomainPerFrame, 0, sizeof(DispDomainPerFrame));
         break;
       }
       default:
@@ -184,7 +206,10 @@ void TerrainGeneration::onLoad()
   //Displacement map shader
   mpDisplacementProgram = GraphicsProgram::createFromFile(
     "",
-    appendShaderExtension("Displacement.ps"));
+    appendShaderExtension("Displacement.ps"),
+    "",
+    appendShaderExtension("Displacement.hs"),
+  appendShaderExtension("Displacement.ds"));
   mpDisplacementVars = GraphicsVars::create(mpDisplacementProgram->getActiveVersion()->getReflector());
 
   //create default rasterizer state

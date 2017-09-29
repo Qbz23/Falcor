@@ -44,11 +44,12 @@ namespace Falcor
         case Vao::Topology::TriangleList:
         case Vao::Topology::TriangleStrip:
             return GraphicsStateObject::PrimitiveType::Triangle;
-		case Vao::Topology::Patch:
-			return GraphicsStateObject::PrimitiveType::Patch;
+        case Vao::Topology::Patch3:
+        case Vao::Topology::Patch4:
+			    return GraphicsStateObject::PrimitiveType::Patch;
         default:
-            should_not_get_here();
-            return GraphicsStateObject::PrimitiveType::Undefined;
+          should_not_get_here();
+          return GraphicsStateObject::PrimitiveType::Undefined;
         }
     }
 
