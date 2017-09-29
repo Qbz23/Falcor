@@ -198,7 +198,6 @@ void TerrainGeneration::onLoad()
   //Graphics state
 	mpGraphicsState = GraphicsState::create();
 	mpGraphicsState->setRasterizerState(mpWireframeRS);
-	mpGraphicsState->setVao(mpQuadVao);
 }
 
 void TerrainGeneration::onFrameRender()
@@ -213,14 +212,15 @@ void TerrainGeneration::onFrameRender()
     {
 	    if (mpQuadVao)
 	    {
-        UpdateVars();
+			  UpdateVars();
 
 		    mpGraphicsState->setProgram(mpTessIntroProgram);
+        mpGraphicsState->setVao(mpQuadVao);
 		    mpRenderContext->pushGraphicsState(mpGraphicsState);
 		    mpRenderContext->pushGraphicsVars(mpTessIntroProgramVars);
 		    mpRenderContext->draw(4, 0);
-        mpRenderContext->popGraphicsVars();
-        mpRenderContext->popGraphicsState();
+			  mpRenderContext->popGraphicsVars();
+			  mpRenderContext->popGraphicsState();
 	    }
       break;
     }
@@ -231,6 +231,7 @@ void TerrainGeneration::onFrameRender()
         UpdateVars();
 
         mpGraphicsState->setProgram(mpDisplacementProgram);
+        mpGraphicsState->setVao(nullptr);
         mpRenderContext->pushGraphicsState(mpGraphicsState);
         mpRenderContext->pushGraphicsVars(mpDisplacementVars);
         mpSceneRenderer->renderScene(mpRenderContext.get());

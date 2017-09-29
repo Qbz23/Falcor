@@ -30,7 +30,7 @@ private:
 
   enum Mode { Intro, Displacement };
   static const Gui::DropdownList kModeDropdown;
-  Mode mMode = Intro;
+  Mode mMode = Displacement;
   static const Gui::DropdownList kTexturesDropdown;
 
   void LoadModel(std::string filename);
@@ -70,6 +70,5 @@ private:
 	GraphicsProgram::SharedPtr mpTessIntroProgram;
   GraphicsVars::SharedPtr mpTessIntroProgramVars;
 
-	vec4 mClearColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	int tessellationFactor = 32;
+	vec4 mClearColor = vec4(0.0f, 0.35f, 0.35f, 1.0f);
 };
