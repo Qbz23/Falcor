@@ -41,6 +41,13 @@ private:
     float heightScale = 1.0f;
   } mDispDomainPerFrame;
 
+  struct DispPixelPerFrame
+  {
+    vec3 lightDir = vec3(0, 0, -1);
+    float padding;
+    float3 eyePos = vec3(0, 0, 5);
+  } mDispPixelPerFrame;
+
   enum Mode { Intro, Displacement };
   static const Gui::DropdownList kModeDropdown;
   Mode mMode = Displacement;
@@ -70,7 +77,6 @@ private:
   Scene::SharedPtr mpScene;
   SceneRenderer::SharedPtr mpSceneRenderer;
 	FirstPersonCameraController mCamController;
-  vec3 mLightDir = vec3(0, 0, -1);
 
 	GraphicsState::SharedPtr mpGraphicsState;
   RasterizerState::SharedPtr mpWireframeRS;

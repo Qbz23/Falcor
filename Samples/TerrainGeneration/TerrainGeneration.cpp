@@ -102,7 +102,7 @@ void TerrainGeneration::onGuiRender()
       mpGui->addFloatVar("HeightScale", mDispDomainPerFrame.heightScale);
 
       varsDirty = mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex) || varsDirty;
-      varsDirty = mpGui->addFloat3Var("LightDir", mLightDir) || varsDirty;
+      varsDirty = mpGui->addFloat3Var("LightDir", mDispPixelPerFrame.lightDir) || varsDirty;
 
       break;
     }
@@ -162,7 +162,8 @@ void TerrainGeneration::UpdateVars()
         hsCbuf->setBlob(&mDispHullPerFrame, 0, sizeof(mDispHullPerFrame));
         //ps
         auto psCbuf = mpDisplacementVars->getConstantBuffer(0, 0, 0);
-        psCbuf->setBlob(&mLightDir, 0, sizeof(vec3));
+        mDispPixelPerFrame.eyePos = mpScene->getActiveCamera()->getPosition();
+        psCbuf->setBlob(&mDispPixelPerFrame, 0, sizeof(vec3));
         mpDisplacementVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
         mpDisplacementVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
         mpDisplacementVars->setSrv(0, 2, 0, mDisplacementMaps[textureIndex]->getSRV());
@@ -184,6 +185,9 @@ void TerrainGeneration::UpdateVars()
         //ds
         auto cBuf = mpDisplacementVars->getConstantBuffer("DsPerFrame");
         mDispDomainPerFrame.viewProj = mpScene->getActiveCamera()->getViewProjMatrix();
+        static float t = 0.0f;
+        t += 0.005f;
+        //mDispDomainPerFrame.heightScale = 2 * sin(t) + 1.5f;
         cBuf->setBlob(&mDispDomainPerFrame, 0, sizeof(DispDomainPerFrame));
         break;
       }
@@ -236,6 +240,9 @@ void TerrainGeneration::onLoad()
 
   //Graphics state
 	mpGraphicsState = GraphicsState::create();
+  Sampler::Desc samplerDesc;
+  samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
+  mpDisplacementVars->setSampler("gSampler", Sampler::create(samplerDesc));
 	mpGraphicsState->setRasterizerState(mpWireframeRS);
 }
 
