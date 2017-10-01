@@ -1,29 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="TerrainGeneration.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="TerrainGeneration.h" />
-  </ItemGroup>
-  <ItemGroup>
     <Filter Include="Data">
       <UniqueIdentifier>{b3f1ef16-e956-47c8-9ff2-5551f0fa6dc4}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Data\TesellationIntro.ds.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.hs.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.ps.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.vs.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
     <FxCompile Include="Data\Displacement.ps.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
@@ -33,5 +15,28 @@
     <FxCompile Include="Data\Displacement.hs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.ds.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.hs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.vs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\TessellationIntro.cpp" />
+    <ClCompile Include="Source\TessellationProject.cpp" />
+    <ClCompile Include="Source\DisplacementMapping.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\TessellationIntro.h" />
+    <ClInclude Include="Source\TessellationProject.h" />
+    <ClInclude Include="Source\EffectSample.h" />
+    <ClInclude Include="Source\DisplacementMapping.h" />
   </ItemGroup>
 </Project>

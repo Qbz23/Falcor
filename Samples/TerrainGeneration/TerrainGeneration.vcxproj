@@ -115,12 +115,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="TerrainGeneration.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="TerrainGeneration.h" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\..\Framework\Source\Falcor.vcxproj">
       <Project>{3b602f0e-3834-4f73-b97d-7dfc91597a98}</Project>
     </ProjectReference>
@@ -137,22 +131,29 @@
     <FxCompile Include="Data\Displacement.ps.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.ds.hlsl">
+    <FxCompile Include="Data\TessellationIntro.ds.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.hs.hlsl">
+    <FxCompile Include="Data\TessellationIntro.hs.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.ps.hlsl">
+    <FxCompile Include="Data\TessellationIntro.ps.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
-    <FxCompile Include="Data\TesellationIntro.vs.hlsl">
+    <FxCompile Include="Data\TessellationIntro.vs.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\DisplacementMapping.cpp" />
+    <ClCompile Include="Source\TessellationIntro.cpp" />
+    <ClCompile Include="Source\TessellationProject.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\DisplacementMapping.h" />
+    <ClInclude Include="Source\EffectSample.h" />
+    <ClInclude Include="Source\TessellationIntro.h" />
+    <ClInclude Include="Source\TessellationProject.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
