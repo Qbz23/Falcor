@@ -19,6 +19,10 @@ public:
   private:
     static const Gui::DropdownList kTexturesDropdown;
 
+    enum ShadingMode { Diffuse, DiffuseWithNormalMap, WorldNormal, CalcNormal, SampleNormal};
+    ShadingMode mShadingMode = Diffuse;
+    static const Gui::DropdownList kShadingModeDropdown;
+
     struct HullPerFrame
     {
       glm::vec3 edgeFactors = vec3(2, 2, 2);

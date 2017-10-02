@@ -34,16 +34,32 @@ float4 main(VS_OUT vOut) : SV_TARGET
 {
   float3 relativeEyePos = vOut.posW - eyePos;
   float3 normalW = -normalize(cross(ddx(relativeEyePos), ddy(relativeEyePos)));
-  float3 normal = GetNormalSample(normalW, vOut.bitangentW, vOut.texC);
+  float3 normal = GetNormalSample(normalW, -vOut.bitangentW, vOut.texC);
+
+#ifdef WORLDNORMAL
+  vOut.normalW = (vOut.normalW + 1) * 0.5f;
+  return float4(vOut.normalW, 1.0f);
+#endif
+
+#ifdef CALCNORMAL
+  normalW = (normalW + 1) * 0.5f;
+  return float4(normalW, 1.0f);
+#endif 
+
+#ifdef SAMPLENORMAL
+  normal = (normal + 1) * 0.5f;
+  return float4(normal, 1.0f);
+#endif 
+
+#ifdef DIFFUSE
+  float diffuse = max(dot(normalize(normalW), normalize(-lightDir)), 0);
+  float3 diffuseColor = diffuse * gDiffuseMap.Sample(gSampler, vOut.texC).xyz;
+  return float4(diffuseColor, 1.0f);
+#endif
+
+#ifdef DIFFUSENORMALMAP
   float diffuse = max(dot(normalize(normal), normalize(-lightDir)), 0);
   float3 diffuseColor = diffuse * gDiffuseMap.Sample(gSampler, vOut.texC).xyz;
-
-  //uncomment to debug normals
-  //back from [-1, 1] to [0, 1] for debug drawing
-  //normalW = (normalW + 1) * 0.5f;
-  vOut.normalW = (vOut.normalW + 1) * 0.5f;
-  //return float4(vOut.normalW, 1.0f);
-  //return float4(normalW, 1.0f);
-  //return float4(diffuse, diffuse, diffuse, 1.0f);
   return float4(diffuseColor, 1.0f);
+#endif 
 }

@@ -13,6 +13,15 @@ const Gui::DropdownList DisplacementMapping::kTexturesDropdown
   { 5, mTextureNames[5] }
 };
 
+const Gui::DropdownList DisplacementMapping::kShadingModeDropdown
+{
+  { (int32_t)ShadingMode::Diffuse, "Diffuse" },
+  { (int32_t)ShadingMode::DiffuseWithNormalMap, "Diffuse using Normal Map" },
+  { (int32_t)ShadingMode::WorldNormal, "Simple World Normal" },
+  { (int32_t)ShadingMode::CalcNormal, "Derivitve Calc'd Normal" },
+  { (int32_t)ShadingMode::SampleNormal, "Sampled Normal Map Normal" }
+};
+
 void DisplacementMapping::LoadTextures()
 {
   for (uint32_t i = 0; i < kNumTextures; ++i)
@@ -52,12 +61,15 @@ void DisplacementMapping::OnLoad(Fbo::SharedPtr& pDefaultFbo)
 	mpWireframeRS = RasterizerState::create(wireframeDesc);
 
   //Shader
+  Program::DefineList defines;
+  defines.add("DIFFUSE");
   auto program = GraphicsProgram::createFromFile(
     "",
     appendShaderExtension("Displacement.ps"),
     "",
     appendShaderExtension("Displacement.hs"),
-    appendShaderExtension("Displacement.ds"));
+    appendShaderExtension("Displacement.ds"),
+    defines);
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   //State
@@ -127,6 +139,35 @@ void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
 
   mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
   mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex);
+
+  uint32_t mode = (uint32_t)mShadingMode;
+  if(mpGui->addDropdown("ShadingMode", kShadingModeDropdown, mode))
+  {
+    auto program = mpState->getProgram();
+    program->clearDefines();
+
+    mShadingMode = (ShadingMode)mode;
+    switch(mShadingMode)
+    {
+      case ShadingMode::Diffuse:
+        program->addDefine("DIFFUSE");
+        break;
+      case ShadingMode::DiffuseWithNormalMap:
+        program->addDefine("DIFFUSENORMALMAP");
+        break;
+      case ShadingMode::WorldNormal:
+        program->addDefine("WORLDNORMAL");
+        break;
+      case ShadingMode::CalcNormal:
+        program->addDefine("CALCNORMAL");
+        break;
+      case ShadingMode::SampleNormal:
+        program->addDefine("SAMPLENORMAL");
+        break;
+      default:  
+        should_not_get_here();
+    }
+  }
   mpGui->addFloat3Var("LightDir", mDispPixelPerFrame.lightDir);
 
 }

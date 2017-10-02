@@ -21,6 +21,7 @@ void TerrainGeneration::onGuiRender()
 
 void TerrainGeneration::onLoad()
 {
+  //Needs to be ptr so it calls derived class functions
   effects[Mode::Intro] = new TessellationIntro();
   effects[Mode::Displacement] = new DisplacementMapping();
 
