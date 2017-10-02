@@ -20,7 +20,6 @@ SamplerState gSampler;
 Texture2D gDiffuseMap : register(t0);
 Texture2D gNormalMap : register(t1);
 
-
 float3 GetNormalSample(float3 normalW, float3 bitangentW, float2 uv)
 {
   float3 tan = cross(normalW, bitangentW);

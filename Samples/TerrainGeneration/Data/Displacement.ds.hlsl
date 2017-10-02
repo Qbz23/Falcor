@@ -2,6 +2,7 @@ cbuffer DsPerFrame
 {
   matrix mvp;
   float heightScale;
+  float2 uvOffset;
 };
 
 struct HS_CONST_OUT
@@ -45,7 +46,7 @@ VS_OUT main(
   {
     output.normalW += baryCoords[i] * tri[i].normalW;
     output.bitangentW += baryCoords[i] * tri[i].bitangentW;
-    output.texC += baryCoords[i] * tri[i].texC;
+    output.texC += baryCoords[i] * tri[i].texC + uvOffset;
     output.posW += baryCoords[i] * tri[i].posW;
     output.colorV += baryCoords[i] * tri[i].colorV;
     output.prevPosH += baryCoords[i] * tri[i].prevPosH;

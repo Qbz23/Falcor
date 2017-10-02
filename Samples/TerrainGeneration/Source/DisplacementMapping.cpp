@@ -22,6 +22,15 @@ const Gui::DropdownList DisplacementMapping::kShadingModeDropdown
   { (int32_t)ShadingMode::SampleNormal, "Sampled Normal Map Normal" }
 };
 
+const Gui::DropdownList DisplacementMapping::kAnimationModeDropdown
+{
+  { (int32_t)AnimationMode::None, "None" },
+  { (int32_t)AnimationMode::Height, "Height" },
+  { (int32_t)AnimationMode::UVs, "UVs" },
+  { (int32_t)AnimationMode::HeightAndUVs, "Height and UVs" },
+};
+
+
 void DisplacementMapping::LoadTextures()
 {
   for (uint32_t i = 0; i < kNumTextures; ++i)
@@ -76,17 +85,41 @@ void DisplacementMapping::OnLoad(Fbo::SharedPtr& pDefaultFbo)
   mpState = GraphicsState::create();
   mpState->setFbo(pDefaultFbo);
   mpState->setProgram(program);
+
+  //Sampler
   Sampler::Desc samplerDesc;
-  samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
+  samplerDesc.setFilterMode(
+    Sampler::Filter::Linear, 
+    Sampler::Filter::Linear, 
+    Sampler::Filter::Linear);
+  samplerDesc.setAddressingMode(
+    Sampler::AddressMode::Wrap, 
+    Sampler::AddressMode::Wrap, 
+    Sampler::AddressMode::Wrap);
   mpVars->setSampler("gSampler", Sampler::create(samplerDesc));
 }
 
 void DisplacementMapping::PreFrameRender(RenderContext::SharedPtr pCtx)
 {
   mCamController.update();
+
+  static float curHeightT = 0.0f;
+  //if height being animated
+  if(mAnimationMode == AnimationMode::Height || mAnimationMode == AnimationMode::HeightAndUVs)
+  {
+    curHeightT += heightSpeed;
+    mDomainPerFrame.heightScale = heightRange * sin(curHeightT) + heightOffset;
+  }
+  //If uvs being animated
+  if(mAnimationMode == AnimationMode::UVs || mAnimationMode == AnimationMode::HeightAndUVs)
+  {
+    //Mult by 0.01f is just convenience b/c imgui doesn't like going below 0.001
+    static const float uvScale = 0.01f;
+    mDomainPerFrame.uvOffset += UvSpeed * uvScale;
+  }
+
   UpdateVars();
   pCtx->pushGraphicsState(mpState);
-  //pCtx->setGraphicsState(mpState);
   pCtx->pushGraphicsVars(mpVars);
 }
 
@@ -133,20 +166,19 @@ void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
     mpModelInst->setRotation(rot);
   }
 
-  //Tess Factors
+  //Tess
   mpGui->addFloat3Var("Edge Factors", mHullPerFrame.edgeFactors, -floatMax, floatMax);
   mpGui->addFloatVar("Inside Factor", mHullPerFrame.insideFactor, -floatMax, floatMax);
 
-  mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
+  //Shading
   mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex);
-
-  uint32_t mode = (uint32_t)mShadingMode;
-  if(mpGui->addDropdown("ShadingMode", kShadingModeDropdown, mode))
+  uint32_t shadingMode = (uint32_t)mShadingMode;
+  if(mpGui->addDropdown("ShadingMode", kShadingModeDropdown, shadingMode))
   {
     auto program = mpState->getProgram();
     program->clearDefines();
 
-    mShadingMode = (ShadingMode)mode;
+    mShadingMode = (ShadingMode)shadingMode;
     switch(mShadingMode)
     {
       case ShadingMode::Diffuse:
@@ -168,8 +200,35 @@ void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
         should_not_get_here();
     }
   }
-  mpGui->addFloat3Var("LightDir", mDispPixelPerFrame.lightDir);
 
+  if(mShadingMode == Diffuse || mShadingMode == DiffuseWithNormalMap)
+    mpGui->addFloat3Var("LightDir", mPixelPerFrame.lightDir);
+
+  //Anim
+  uint32_t animMode = (AnimationMode)mAnimationMode;
+  if(mpGui->addDropdown("Anim Mode", kAnimationModeDropdown, animMode))
+  {
+    mAnimationMode = (AnimationMode)animMode;
+  }
+  if (mAnimationMode == None)
+  {
+    mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
+  }
+  else
+  {
+    //height
+    if (mAnimationMode == Height || mAnimationMode == HeightAndUVs)
+    {
+      mpGui->addFloatVar("Height Range", heightRange);
+      mpGui->addFloatVar("Height Speed", heightSpeed, -floatMax, floatMax, 0.0001f);
+      mpGui->addFloatVar("Height Offset", heightOffset);
+    }
+    //uvs
+    if (mAnimationMode == UVs || mAnimationMode == HeightAndUVs)
+    {
+      mpGui->addFloat2Var("Scaled Uv Speed", UvSpeed);
+    }
+  }
 }
 
 bool DisplacementMapping::onKeyEvent(const KeyboardEvent& keyEvent)
@@ -219,15 +278,11 @@ void DisplacementMapping::UpdateVars()
   auto cBuf = mpVars->getConstantBuffer("DsPerFrame");
   mDomainPerFrame.viewProj = mpScene->getActiveCamera()->getViewProjMatrix();
   
-  //uncomment to animate height
-  //static float t = 0.0f;
-  //t += 0.005f;
-  //mDispDomainPerFrame.heightScale = 2 * sin(t) + 1.5f;
   cBuf->setBlob(&mDomainPerFrame, 0, sizeof(DomainPerFrame));
   //ps
   auto psCbuf = mpVars->getConstantBuffer(0, 0, 0);
-  mDispPixelPerFrame.eyePos = mpScene->getActiveCamera()->getPosition();
-  psCbuf->setBlob(&mDispPixelPerFrame, 0, sizeof(vec3));
+  mPixelPerFrame.eyePos = mpScene->getActiveCamera()->getPosition();
+  psCbuf->setBlob(&mPixelPerFrame, 0, sizeof(vec3));
   mpVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
   mpVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
   mpVars->setSrv(0, 2, 0, mDisplacementMaps[textureIndex]->getSRV());

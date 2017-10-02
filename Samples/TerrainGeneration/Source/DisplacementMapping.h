@@ -19,10 +19,21 @@ public:
   private:
     static const Gui::DropdownList kTexturesDropdown;
 
+    //Shading Settings
     enum ShadingMode { Diffuse, DiffuseWithNormalMap, WorldNormal, CalcNormal, SampleNormal};
     ShadingMode mShadingMode = Diffuse;
     static const Gui::DropdownList kShadingModeDropdown;
 
+    //Animation Settings
+    enum AnimationMode { None, Height, UVs, HeightAndUVs };
+    AnimationMode mAnimationMode = None;
+    static const Gui::DropdownList kAnimationModeDropdown;
+    float heightRange = 0.5f;
+    float heightSpeed = 0.01f;
+    float heightOffset = 0.25f;
+    vec2 UvSpeed = vec2(0.01f, 0.01f);
+
+    //Cbuffers
     struct HullPerFrame
     {
       glm::vec3 edgeFactors = vec3(2, 2, 2);
@@ -34,14 +45,15 @@ public:
     {
       glm::mat4 viewProj = glm::mat4();
       float heightScale = 1.0f;
+      vec2 uvOffset = vec2(0.f, 0.f);
     } mDomainPerFrame;
 
     struct PixelPerFrame
     {
       vec3 lightDir = vec3(0, 0, -1);
-      float padding;
+      float padding = 0.0f;
       float3 eyePos = vec3(0, 0, 5);
-    } mDispPixelPerFrame;
+    } mPixelPerFrame;
 
     //Texture stuff
     //Loads all available diff/normal/displacement textures
