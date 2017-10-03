@@ -27,16 +27,24 @@
     <FxCompile Include="Data\TessellationIntro.vs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.vs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\TessellationIntro.cpp" />
     <ClCompile Include="Source\TessellationProject.cpp" />
     <ClCompile Include="Source\DisplacementMapping.cpp" />
+    <ClCompile Include="Source\InteractivePlane.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\TessellationIntro.h" />
     <ClInclude Include="Source\TessellationProject.h" />
     <ClInclude Include="Source\EffectSample.h" />
     <ClInclude Include="Source\DisplacementMapping.h" />
+    <ClInclude Include="Source\InteractivePlane.h" />
   </ItemGroup>
 </Project>

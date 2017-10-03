@@ -131,6 +131,12 @@
     <FxCompile Include="Data\Displacement.ps.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.vs.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.ps.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
     <FxCompile Include="Data\TessellationIntro.ds.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
@@ -146,12 +152,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\DisplacementMapping.cpp" />
+    <ClCompile Include="Source\InteractivePlane.cpp" />
     <ClCompile Include="Source\TessellationIntro.cpp" />
     <ClCompile Include="Source\TessellationProject.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\DisplacementMapping.h" />
     <ClInclude Include="Source\EffectSample.h" />
+    <ClInclude Include="Source\InteractivePlane.h" />
     <ClInclude Include="Source\TessellationIntro.h" />
     <ClInclude Include="Source\TessellationProject.h" />
   </ItemGroup>
