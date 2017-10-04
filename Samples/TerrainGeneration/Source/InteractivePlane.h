@@ -22,20 +22,17 @@ class InteractivePlane : public EffectSample
       glm::vec2 texCoord;
     };
 
-    struct HullPerFrame
-    {
-      glm::vec4 edgeFactors = vec4(32, 32, 32, 32);
-      glm::vec2 insideFactors = vec2(32, 32);
-      glm::vec2 padding;
-    } mHullPerFrame;
-
-    //Creates the VAO of the fullscreen quad & sets it into gfx state
+    //Loads plane obj and sets it into the scene
     void CreatePlane();
+    //returns tex coords of point of click on object
+    float2 ClickRayPlane(float2 mouseCoords);
 
-    Camera::SharedPtr mpCamera;
+    Scene::SharedPtr mpScene;
+    SceneRenderer::SharedPtr mpSceneRenderer;
     FirstPersonCameraController mCamController;
 
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;
     void UpdateVars();
+
 };

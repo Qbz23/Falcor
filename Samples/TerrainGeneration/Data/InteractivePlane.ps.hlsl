@@ -1,3 +1,8 @@
+cbuffer PsPerFrame : register(b1)
+{
+  float2 clickCoords;
+}
+
 struct VS_OUT
 {
 	float4 pos : SV_POSITION;
@@ -6,5 +11,6 @@ struct VS_OUT
 
 float4 main(VS_OUT vOut) : SV_TARGET
 {
-  return float4(vOut.tex, 0, 1);
+  float2 color = saturate(abs(vOut.tex - clickCoords));
+  return float4(color, 0, 1);
 }
