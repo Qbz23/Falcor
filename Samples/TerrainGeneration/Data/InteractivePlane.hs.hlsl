@@ -39,11 +39,11 @@ HS_CONST_OUT HSConstant(InputPatch<VS_OUT, 4> ip, uint pid : SV_PrimitiveID)
 
 	[unroll(4)]
 	for (int i = 0; i < 4; ++i)
-		output.edges[i] = 32;//edgeFactors[i];
+		output.edges[i] = 64;//edgeFactors[i];
 
 	[unroll(2)]
 	for (int j = 0; j < 2; ++j)
-		output.inside[j] = 32;//insideFactors[j];
+		output.inside[j] = 64;//insideFactors[j];
 
 	return output;
 }

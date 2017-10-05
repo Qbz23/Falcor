@@ -17,7 +17,7 @@ struct HS_CONST_OUT
 struct DS_OUT
 {
 	float4 pos : SV_POSITION;
-	float4 color : COLOR;
+	float4 posW : POSITION;
 };
 
 SamplerState gSampler;
@@ -36,8 +36,8 @@ DS_OUT main(HS_CONST_OUT input, float2 UV: SV_DomainLocation,
 
 	output.pos = float4(lerp(topMid, botMid, UV.y), 1);
   output.pos.y += height;
+  output.posW = output.pos;
   output.pos = mul(output.pos, viewProj);
-	output.color = float4(UV.yx, 1 - UV.x, 1);
 
 	return output;
 }
