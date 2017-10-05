@@ -1,7 +1,4 @@
-cbuffer VsPerFrame : register(b0)
-{
-  matrix viewProj;
-}
+
 
 struct VS_IN
 {
@@ -18,7 +15,8 @@ struct VS_OUT
 VS_OUT main(VS_IN vIn)
 {
 	VS_OUT output;
-	output.pos = mul(vIn.pos, viewProj);
+  output.pos = vIn.pos;
+	//output.pos = mul(vIn.pos, viewProj);
   output.tex = vIn.tex;
 	return output;
 }

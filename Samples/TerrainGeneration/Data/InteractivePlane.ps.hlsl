@@ -3,17 +3,17 @@ cbuffer PsPerFrame : register(b1)
   float2 clickCoords;
 }
 
-struct VS_OUT
+struct DS_OUT
 {
-	float4 pos : SV_POSITION;
-  float2 tex : TEXCOORD0;
+  float4 pos : SV_POSITION;
+  float4 color : COLOR;
 };
 
 SamplerState gSampler;
 Texture2D gHeightmap;
 
-float4 main(VS_OUT vOut) : SV_TARGET
+float4 main(DS_OUT vOut) : SV_TARGET
 {
-  float3 color = gHeightmap.SampleLevel(gSampler, vOut.tex, 0).xyz * 0.01f;
-  return float4(color, 1.0f);
+  //float3 color = gHeightmap.SampleLevel(gSampler, vOut.tex, 0).xyz * 0.01f;
+  return vOut.color;
 }

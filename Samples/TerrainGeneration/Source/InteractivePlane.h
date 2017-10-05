@@ -26,9 +26,9 @@ class InteractivePlane : public EffectSample
     struct HeightPsPerFrame
     {
       vec2 clickCoords;
-      float radius;
-      float heightIncrease;
-      int sign;
+      float radius = 0.25f;
+      float heightIncrease = 0.01f;
+      int sign = 1;
     };
 
     struct HeightmapPass
@@ -40,6 +40,7 @@ class InteractivePlane : public EffectSample
       ConstantBuffer::SharedPtr psPerFrame;
       Fbo::SharedPtr mpFbo;
       bool shouldUpdateThisFrame = false;
+      bool shouldResetHeight = false;
     } mHeightmapPass;
 
     void RenderHeightChange(RenderContext::SharedPtr pCtx);
@@ -49,9 +50,7 @@ class InteractivePlane : public EffectSample
     //returns tex coords of point of click on object
     float2 ClickRayPlane(float2 mouseCoords);
 
-    //Scene::SharedPtr mpScene;
     Camera::SharedPtr mpCamera;
-    //SceneRenderer::SharedPtr mpSceneRenderer;
     FirstPersonCameraController mCamController;
 
     GraphicsState::SharedPtr mpState;

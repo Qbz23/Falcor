@@ -4,12 +4,15 @@ void InteractivePlane::OnLoad(Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("InteractivePlane.vs"),
-    appendShaderExtension("InteractivePlane.ps"));
+    appendShaderExtension("InteractivePlane.ps"),
+    "",
+    appendShaderExtension("InteractivePlane.hs"),
+    appendShaderExtension("InteractivePlane.ds"));
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
   mCamController.attachCamera(mpCamera);
-
+ 
   mpState = GraphicsState::create();
   mpState->setFbo(pDefaultFbo);
   mpState->setProgram(program);
@@ -35,17 +38,27 @@ void InteractivePlane::OnLoad(Fbo::SharedPtr& pDefaultFbo)
   mHeightmapPass.mpFbo = Fbo::create();
   mHeightmapPass.mpFbo->attachColorTarget(mpHeightmap, 0);
   mHeightmapPass.mpState->setFbo(mHeightmapPass.mpFbo);
+
+  //Clamp sampler
+  Sampler::Desc samplerDesc = Sampler::Desc();
+  samplerDesc.setAddressingMode(
+    Sampler::AddressMode::Clamp,
+    Sampler::AddressMode::Clamp,
+    Sampler::AddressMode::Clamp);
+  auto sampler = Sampler::create(samplerDesc);
+
+  mHeightmapPass.mpVars->setSampler("gSampler", sampler);
+  mpVars->setSampler("gSampler", sampler);
 }
 
 void InteractivePlane::RenderHeightChange(RenderContext::SharedPtr pCtx)
 {
-  mHeightmapPass.shouldUpdateThisFrame = false;
   //Set vars
   mHeightmapPass.psPerFrame->setBlob(
     &mHeightmapPass.psPerFrameData, 0, sizeof(HeightPsPerFrame));
   mHeightmapPass.mpVars->setSrv(0, 0, 0, mpHeightmap->getSRV());
 
-  //Render to height map
+  //render
   pCtx->pushGraphicsState(mHeightmapPass.mpState);
   pCtx->pushGraphicsVars(mHeightmapPass.mpVars);
   mHeightmapPass.mpPass->execute(pCtx.get());
@@ -59,6 +72,12 @@ void InteractivePlane::RenderHeightChange(RenderContext::SharedPtr pCtx)
 void InteractivePlane::PreFrameRender(RenderContext::SharedPtr pCtx)
 {
   mCamController.update();
+
+  if (mHeightmapPass.shouldResetHeight)
+  {
+    mHeightmapPass.shouldResetHeight = false;
+    pCtx->clearFbo(mHeightmapPass.mpFbo.get(), glm::vec4(0, 0, 0, 0), 0, 0);
+  }
 
   if(mHeightmapPass.shouldUpdateThisFrame)
     RenderHeightChange(pCtx);
@@ -77,6 +96,11 @@ void InteractivePlane::OnFrameRender(RenderContext::SharedPtr pCtx)
 
 void InteractivePlane::OnGuiRender(Gui::UniquePtr& mpGui)
 {
+  if(mpGui->addButton("Reset Height"))
+    mHeightmapPass.shouldResetHeight = true;
+  
+  mpGui->addFloatVar("Radius", mHeightmapPass.psPerFrameData.radius);
+  mpGui->addFloatVar("Height Increase", mHeightmapPass.psPerFrameData.heightIncrease);
 }
 
 bool InteractivePlane::onKeyEvent(const KeyboardEvent& keyEvent)
@@ -86,22 +110,31 @@ bool InteractivePlane::onKeyEvent(const KeyboardEvent& keyEvent)
 
 bool InteractivePlane::onMouseEvent(const MouseEvent& mouseEvent)
 {
-  if(mouseEvent.type == MouseEvent::Type::LeftButtonDown)
+  static bool currentlyPresseed = false;
+  if(currentlyPresseed)
   {
+    if(mouseEvent.type == MouseEvent::Type::LeftButtonUp || 
+      mouseEvent.type == MouseEvent::Type::RightButtonUp)
+      {
+        currentlyPresseed = false;
+        mHeightmapPass.shouldUpdateThisFrame = false;
+      }
+  }
+
+  if (mouseEvent.type == MouseEvent::Type::LeftButtonDown)
+  {
+    currentlyPresseed = true;
     //Todo, hook most of this up to a gui. 
     //Only the click and the bool and the sign needs to happen here
     mHeightmapPass.shouldUpdateThisFrame = true;
     mHeightmapPass.psPerFrameData.clickCoords = ClickRayPlane(mouseEvent.pos);
-    mHeightmapPass.psPerFrameData.radius = 0.25f;
-    mHeightmapPass.psPerFrameData.heightIncrease = 1.0f;
     mHeightmapPass.psPerFrameData.sign = 1;
   }
-  else if(mouseEvent.type == MouseEvent::Type::RightButtonDown)
+  else if (mouseEvent.type == MouseEvent::Type::RightButtonDown)
   {
+    currentlyPresseed = true;
     mHeightmapPass.shouldUpdateThisFrame = true;
     mHeightmapPass.psPerFrameData.clickCoords = ClickRayPlane(mouseEvent.pos);
-    mHeightmapPass.psPerFrameData.radius = 0.25f;
-    mHeightmapPass.psPerFrameData.heightIncrease = 1.0f;
     mHeightmapPass.psPerFrameData.sign = -1;
   }
 
@@ -169,7 +202,7 @@ void InteractivePlane::CreatePlane()
   //create vao
   Vao::BufferVec buffers{ vertexBuffer };
   //Change this to patch4 for tess
-  auto vao = Vao::create(Vao::Topology::TriangleStrip, pLayout, buffers);
+  auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
   //Set it into graphics state
   mpState->setVao(vao);
 }
@@ -180,4 +213,5 @@ void InteractivePlane::UpdateVars()
   auto viewProj = mpCamera->getViewProjMatrix();
   cbuf->setBlob(&viewProj, 0, sizeof(glm::mat4));
   mpVars->setSrv(0, 0, 0, mpHeightmap->getSRV());
+  mpVars->setSrv(0, 1, 0, mpHeightmap->getSRV());
 }
