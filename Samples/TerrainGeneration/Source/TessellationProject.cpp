@@ -28,6 +28,8 @@ void TerrainGeneration::onLoad()
   effects[Mode::Displacement] = new DisplacementMapping();
   effects[Mode::DynamicPlane] = new InteractivePlane();
 
+  //FullScreenPass::create(
+
   for(uint32_t i = 0; i < Mode::Count; ++i)
   {
     effects[i]->OnLoad(mpDefaultFBO);

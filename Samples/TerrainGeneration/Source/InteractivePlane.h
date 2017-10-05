@@ -22,17 +22,42 @@ class InteractivePlane : public EffectSample
       glm::vec2 texCoord;
     };
 
+    //Height pass cbuffer
+    struct HeightPsPerFrame
+    {
+      vec2 clickCoords;
+      float radius;
+      float heightIncrease;
+      int sign;
+    };
+
+    struct HeightmapPass
+    {
+      FullScreenPass::UniquePtr mpPass;
+      GraphicsVars::SharedPtr mpVars;
+      GraphicsState::SharedPtr mpState;
+      HeightPsPerFrame psPerFrameData;
+      ConstantBuffer::SharedPtr psPerFrame;
+      Fbo::SharedPtr mpFbo;
+      bool shouldUpdateThisFrame = false;
+    } mHeightmapPass;
+
+    void RenderHeightChange(RenderContext::SharedPtr pCtx);
+
     //Loads plane obj and sets it into the scene
     void CreatePlane();
     //returns tex coords of point of click on object
     float2 ClickRayPlane(float2 mouseCoords);
 
-    Scene::SharedPtr mpScene;
-    SceneRenderer::SharedPtr mpSceneRenderer;
+    //Scene::SharedPtr mpScene;
+    Camera::SharedPtr mpCamera;
+    //SceneRenderer::SharedPtr mpSceneRenderer;
     FirstPersonCameraController mCamController;
 
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;
+    Texture::SharedPtr mpHeightmap;
+
     void UpdateVars();
 
 };

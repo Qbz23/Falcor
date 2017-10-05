@@ -33,6 +33,9 @@
     <FxCompile Include="Data\InteractivePlane.ps.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\Heightmap.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\TessellationIntro.cpp" />
