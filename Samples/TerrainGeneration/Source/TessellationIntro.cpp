@@ -3,11 +3,11 @@
 void TessellationIntro::OnLoad(Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
-    appendShaderExtension("TesellationIntro.vs"),
-    appendShaderExtension("TesellationIntro.ps"),
+    appendShaderExtension("TessellationIntro.vs"),
+    appendShaderExtension("TessellationIntro.ps"),
     "",
-    appendShaderExtension("TesellationIntro.hs"),
-    appendShaderExtension("TesellationIntro.ds"));
+    appendShaderExtension("TessellationIntro.hs"),
+    appendShaderExtension("TessellationIntro.ds"));
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   //Rasterizer State
@@ -39,13 +39,37 @@ void TessellationIntro::OnFrameRender(RenderContext::SharedPtr pCtx)
 
 void TessellationIntro::OnGuiRender(Gui::UniquePtr& mpGui)
 {
-  mpGui->addFloat4Var("Edge Factors", mHullPerFrame.edgeFactors, 1, 64);
-  mpGui->addFloat2Var("Inside Factors", mHullPerFrame.insideFactors, 1, 64);
+  if (mpGui->beginGroup("Intro to Tessellation"))
+  {
+    mpGui->addFloat4Var("Edge Factors", mHullPerFrame.edgeFactors, 1, 64);
+    mpGui->addFloat2Var("Inside Factors", mHullPerFrame.insideFactors, 1, 64);
+    mpGui->endGroup();
+  }
 }
 
 bool TessellationIntro::onKeyEvent(const KeyboardEvent& keyEvent)
 {
-  //TODO Arrow keys control tessellation factor 
+  if (keyEvent.type == KeyboardEvent::Type::KeyReleased)
+    return false;
+
+  switch (keyEvent.key)
+  {
+    case KeyboardEvent::Key::Left:
+      mHullPerFrame.edgeFactors -= vec4(1, 1, 1, 1);
+      break;
+    case KeyboardEvent::Key::Right:
+      mHullPerFrame.edgeFactors += vec4(1, 1, 1, 1);
+      break;
+    case KeyboardEvent::Key::Up:
+      mHullPerFrame.insideFactors += vec2(1, 1);
+      break;
+    case KeyboardEvent::Key::Down:
+      mHullPerFrame.insideFactors -= vec2(1, 1);
+      break;
+    default:
+      return false;
+  }
+
   return true;
 }
 

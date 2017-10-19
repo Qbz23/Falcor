@@ -59,7 +59,7 @@ public:
     //Loads all available diff/normal/displacement textures
     void LoadTextures();
     static const uint32_t kNumTextures = 6;
-    uint32_t textureIndex = 0;
+    uint32_t mTextureIndex = 0;
     // {"Checkerboard", "Links", "Quilt", "Spiral", "Tiles", "Clouds"}
     static const std::string mTextureNames[kNumTextures];
     Texture::SharedPtr mDiffuseMaps[kNumTextures];

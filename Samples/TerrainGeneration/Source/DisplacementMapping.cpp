@@ -134,53 +134,55 @@ void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
 {
   static const float floatMax = std::numeric_limits<float>().max();
 
-  //Model Loading
-  if(mpGui->addButton("Load Model"))
+  if (mpGui->beginGroup("Displacement Mapping"))
   {
-    std::string filename;
-    if(openFileDialog(Model::kSupportedFileFormatsStr, filename))
-      LoadModel(filename);
-  }
-
-  //Wireframe 
-  if (mpGui->addCheckBox("Wireframe", usingWireframeRS))
-  {
-    //sets it in graphics state whenever it changes 
-    if (usingWireframeRS)
+    //Model Loading
+    if (mpGui->addButton("Load Model"))
     {
-      mpState->setRasterizerState(mpWireframeRS);
+      std::string filename;
+      if (openFileDialog(Model::kSupportedFileFormatsStr, filename))
+        LoadModel(filename);
     }
-    else
+
+    //Wireframe 
+    if (mpGui->addCheckBox("Wireframe", usingWireframeRS))
     {
-      mpState->setRasterizerState(mpDefaultRS);
+      //sets it in graphics state whenever it changes 
+      if (usingWireframeRS)
+      {
+        mpState->setRasterizerState(mpWireframeRS);
+      }
+      else
+      {
+        mpState->setRasterizerState(mpDefaultRS);
+      }
     }
-  }
 
-  //Model Rotation
-  if(mpModelInst)
-  {
-    auto rot = mpModelInst->getRotation();
-    mpGui->addFloatVar("RotX", rot.x);
-    mpGui->addFloatVar("RotY", rot.y);
-    mpGui->addFloatVar("RotZ", rot.z);
-    mpModelInst->setRotation(rot);
-  }
-
-  //Tess
-  mpGui->addFloat3Var("Edge Factors", mHullPerFrame.edgeFactors, -floatMax, floatMax);
-  mpGui->addFloatVar("Inside Factor", mHullPerFrame.insideFactor, -floatMax, floatMax);
-
-  //Shading
-  mpGui->addDropdown("Texture", kTexturesDropdown, textureIndex);
-  uint32_t shadingMode = (uint32_t)mShadingMode;
-  if(mpGui->addDropdown("ShadingMode", kShadingModeDropdown, shadingMode))
-  {
-    auto program = mpState->getProgram();
-    program->clearDefines();
-
-    mShadingMode = (ShadingMode)shadingMode;
-    switch(mShadingMode)
+    //Model Rotation
+    if (mpModelInst)
     {
+      auto rot = mpModelInst->getRotation();
+      mpGui->addFloatVar("RotX", rot.x);
+      mpGui->addFloatVar("RotY", rot.y);
+      mpGui->addFloatVar("RotZ", rot.z);
+      mpModelInst->setRotation(rot);
+    }
+
+    //Tess
+    mpGui->addFloat3Var("Edge Factors", mHullPerFrame.edgeFactors, -floatMax, floatMax);
+    mpGui->addFloatVar("Inside Factor", mHullPerFrame.insideFactor, -floatMax, floatMax);
+
+    //Shading
+    mpGui->addDropdown("Texture", kTexturesDropdown, mTextureIndex);
+    uint32_t shadingMode = (uint32_t)mShadingMode;
+    if (mpGui->addDropdown("ShadingMode", kShadingModeDropdown, shadingMode))
+    {
+      auto program = mpState->getProgram();
+      program->clearDefines();
+
+      mShadingMode = (ShadingMode)shadingMode;
+      switch (mShadingMode)
+      {
       case ShadingMode::Diffuse:
         program->addDefine("DIFFUSE");
         break;
@@ -196,38 +198,46 @@ void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
       case ShadingMode::SampleNormal:
         program->addDefine("SAMPLENORMAL");
         break;
-      default:  
+      default:
         should_not_get_here();
+      }
     }
-  }
 
-  if(mShadingMode == Diffuse || mShadingMode == DiffuseWithNormalMap)
-    mpGui->addFloat3Var("LightDir", mPixelPerFrame.lightDir);
+    if (mShadingMode == Diffuse || mShadingMode == DiffuseWithNormalMap)
+      mpGui->addFloat3Var("LightDir", mPixelPerFrame.lightDir);
 
-  //Anim
-  uint32_t animMode = (AnimationMode)mAnimationMode;
-  if(mpGui->addDropdown("Anim Mode", kAnimationModeDropdown, animMode))
-  {
-    mAnimationMode = (AnimationMode)animMode;
-  }
-  if (mAnimationMode == None)
-  {
-    mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
-  }
-  else
-  {
-    //height
-    if (mAnimationMode == Height || mAnimationMode == HeightAndUVs)
+    //Anim
+    uint32_t animMode = (AnimationMode)mAnimationMode;
+    if (mpGui->addDropdown("Anim Mode", kAnimationModeDropdown, animMode))
     {
-      mpGui->addFloatVar("Height Range", heightRange);
-      mpGui->addFloatVar("Height Speed", heightSpeed, -floatMax, floatMax, 0.0001f);
-      mpGui->addFloatVar("Height Offset", heightOffset);
+      mAnimationMode = (AnimationMode)animMode;
     }
-    //uvs
-    if (mAnimationMode == UVs || mAnimationMode == HeightAndUVs)
+    if (mAnimationMode == None)
     {
-      mpGui->addFloat2Var("Scaled Uv Speed", UvSpeed);
+      mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
     }
+    else
+    {
+      //height
+      if (mAnimationMode == Height || mAnimationMode == HeightAndUVs)
+      {
+        mpGui->addFloatVar("Height Range", heightRange);
+        mpGui->addFloatVar("Height Speed", heightSpeed, -floatMax, floatMax, 0.0001f);
+        mpGui->addFloatVar("Height Offset", heightOffset);
+      }
+      //uvs
+      if (mAnimationMode == UVs)
+      {
+        mpGui->addFloat2Var("Scaled Uv Speed", UvSpeed);
+        mpGui->addFloatVar("HeightScale", mDomainPerFrame.heightScale);
+      }
+      else if (mAnimationMode == HeightAndUVs)
+      {
+        mpGui->addFloat2Var("Scaled Uv Speed", UvSpeed);
+      }
+    }
+
+    mpGui->endGroup();
   }
 }
 
@@ -247,6 +257,22 @@ bool DisplacementMapping::onKeyEvent(const KeyboardEvent& keyEvent)
         mpScene->getActiveCamera()->setTarget(vec3(0, 0, -1));
         handled = true;
         break;
+      case KeyboardEvent::Key::Left:
+        mTextureIndex = max(0, (int)mTextureIndex - 1);
+        break;
+      case KeyboardEvent::Key::Right:
+        mTextureIndex = min(kNumTextures - 1, mTextureIndex + 1);
+        break;
+      case KeyboardEvent::Key::Up:
+        mHullPerFrame.edgeFactors += vec3(1, 1, 1);
+        mHullPerFrame.insideFactor += 1;
+        break;
+      case KeyboardEvent::Key::Down:
+        mHullPerFrame.edgeFactors -= vec3(1, 1, 1);
+        mHullPerFrame.insideFactor -= 1;
+        break;
+      default:
+        return false;
       }
     }
   }
@@ -283,7 +309,7 @@ void DisplacementMapping::UpdateVars()
   auto psCbuf = mpVars->getConstantBuffer(0, 0, 0);
   mPixelPerFrame.eyePos = mpScene->getActiveCamera()->getPosition();
   psCbuf->setBlob(&mPixelPerFrame, 0, sizeof(vec3));
-  mpVars->setSrv(0, 0, 0, mDiffuseMaps[textureIndex]->getSRV());
-  mpVars->setSrv(0, 1, 0, mNormalMaps[textureIndex]->getSRV());
-  mpVars->setSrv(0, 2, 0, mDisplacementMaps[textureIndex]->getSRV());
+  mpVars->setSrv(0, 0, 0, mDiffuseMaps[mTextureIndex]->getSRV());
+  mpVars->setSrv(0, 1, 0, mNormalMaps[mTextureIndex]->getSRV());
+  mpVars->setSrv(0, 2, 0, mDisplacementMaps[mTextureIndex]->getSRV());
 }

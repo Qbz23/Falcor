@@ -10,13 +10,16 @@ const Gui::DropdownList TerrainGeneration::kModeDropdown
 
 void TerrainGeneration::onGuiRender()
 {
-  uint32_t iMode = (uint32_t)mMode;
-  mpGui->addDropdown("Mode", kModeDropdown, iMode);
-  mMode = (Mode)iMode;
-	mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
-  mpGui->addSeparator();
-
-  effects[iMode]->OnGuiRender(mpGui);
+  if (mpGui->beginGroup("Core"))
+  {
+    uint32_t iMode = (uint32_t)mMode;
+    mpGui->addDropdown("Mode", kModeDropdown, iMode);
+    mMode = (Mode)iMode;
+    mpGui->addFloat4Var("Clear Color", mClearColor, 0, 1.0f);
+    mpGui->addSeparator();
+    mpGui->endGroup();
+  }
+  effects[mMode]->OnGuiRender(mpGui);
 }
 
 void TerrainGeneration::onLoad()
