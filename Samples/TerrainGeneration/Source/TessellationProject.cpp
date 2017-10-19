@@ -1,11 +1,13 @@
 #include "TessellationProject.h"
 #include "TessellationIntro.h"
 #include "DisplacementMapping.h"
+#include "InteractivePlane.h"
 
 const Gui::DropdownList TerrainGeneration::kModeDropdown
 {
   { (int32_t)Mode::Intro, "Intro to Tessellation" },
-  { (int32_t)Mode::Displacement, "Displacement Mapping" }
+  { (int32_t)Mode::Displacement, "Displacement Mapping" },
+  { (int32_t)Mode::DynamicPlane, "Interactive Plane" }
 };
 
 void TerrainGeneration::onGuiRender()
@@ -27,6 +29,9 @@ void TerrainGeneration::onLoad()
   //Needs to be ptr so it calls derived class functions
   effects[Mode::Intro] = new TessellationIntro();
   effects[Mode::Displacement] = new DisplacementMapping();
+  effects[Mode::DynamicPlane] = new InteractivePlane();
+
+  //FullScreenPass::create(
 
   for(uint32_t i = 0; i < Mode::Count; ++i)
   {

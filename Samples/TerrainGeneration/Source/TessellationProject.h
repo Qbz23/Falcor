@@ -16,7 +16,7 @@ public:
 	void onGuiRender() override;
 
 private:
-  enum Mode { Intro = 0, Displacement = 1, Count = 2 };
+  enum Mode { Intro = 0, Displacement = 1, DynamicPlane = 2, Count = 3 };
   static const Gui::DropdownList kModeDropdown;
   Mode mMode = Displacement;
   EffectSample* effects[Mode::Count];
