@@ -1,6 +1,6 @@
 #include "InteractivePlane.h"
 
-void InteractivePlane::OnLoad(Fbo::SharedPtr& pDefaultFbo)
+void InteractivePlane::onLoad(Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("InteractivePlane.vs"),
@@ -69,7 +69,7 @@ void InteractivePlane::RenderHeightChange(RenderContext::SharedPtr pCtx)
   mpHeightmap = mHeightmapPass.mpFbo->getColorTexture(0);
 }
 
-void InteractivePlane::PreFrameRender(RenderContext::SharedPtr pCtx)
+void InteractivePlane::preFrameRender(RenderContext::SharedPtr pCtx)
 {
   mCamController.update();
 
@@ -87,14 +87,14 @@ void InteractivePlane::PreFrameRender(RenderContext::SharedPtr pCtx)
   pCtx->pushGraphicsVars(mpVars);
 }
 
-void InteractivePlane::OnFrameRender(RenderContext::SharedPtr pCtx)
+void InteractivePlane::onFrameRender(RenderContext::SharedPtr pCtx)
 {
   pCtx->draw(4, 0);
   pCtx->popGraphicsVars();
   pCtx->popGraphicsState();
 }
 
-void InteractivePlane::OnGuiRender(Gui::UniquePtr& mpGui)
+void InteractivePlane::onGuiRender(Gui* mpGui)
 {
   if (mpGui->beginGroup("Interactive Plane"))
   {
@@ -232,4 +232,9 @@ void InteractivePlane::UpdateVars()
   cbuf->setBlob(&viewProj, 0, sizeof(glm::mat4));
   mpVars->setSrv(0, 0, 0, mpHeightmap->getSRV());
   mpVars->setSrv(0, 1, 0, mpHeightmap->getSRV());
+}
+
+void InteractivePlane::onShutdown()
+{
+  mHeightmapPass.mpPass.release();
 }

@@ -1,6 +1,6 @@
 #include "TessellationIntro.h"
 
-void TessellationIntro::OnLoad(Fbo::SharedPtr& pDefaultFbo)
+void TessellationIntro::onLoad(Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("TessellationIntro.vs"),
@@ -23,21 +23,21 @@ void TessellationIntro::OnLoad(Fbo::SharedPtr& pDefaultFbo)
   CreateQuad();
 }
 
-void TessellationIntro::PreFrameRender(RenderContext::SharedPtr pCtx)
+void TessellationIntro::preFrameRender(RenderContext::SharedPtr pCtx)
 {
   UpdateVars();
   pCtx->pushGraphicsState(mpState);
   pCtx->pushGraphicsVars(mpVars);
 }
 
-void TessellationIntro::OnFrameRender(RenderContext::SharedPtr pCtx)
+void TessellationIntro::onFrameRender(RenderContext::SharedPtr pCtx)
 {
   pCtx->draw(4, 0);
   pCtx->popGraphicsVars();
   pCtx->popGraphicsState();
 }
 
-void TessellationIntro::OnGuiRender(Gui::UniquePtr& mpGui)
+void TessellationIntro::onGuiRender(Gui* mpGui)
 {
   if (mpGui->beginGroup("Intro to Tessellation"))
   {

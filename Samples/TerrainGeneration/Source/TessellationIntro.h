@@ -7,10 +7,10 @@ using namespace Falcor;
 class TessellationIntro : public EffectSample
 {
   public: 
-    void OnLoad(Fbo::SharedPtr& pDefaultFbo) override;
-    void PreFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnGuiRender(Gui::UniquePtr& mpGui) override;
+    void onLoad(Fbo::SharedPtr& pDefaultFbo) override;
+    void preFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
 
   private:

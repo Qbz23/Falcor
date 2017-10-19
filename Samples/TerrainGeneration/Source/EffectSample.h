@@ -8,11 +8,11 @@ using namespace Falcor;
 class EffectSample
 {
   public:
-    virtual void OnLoad(Fbo::SharedPtr& pFbo) {}
-    virtual void PreFrameRender(RenderContext::SharedPtr pCtx) {}
-    virtual void OnFrameRender(RenderContext::SharedPtr pCtx) {}
-    virtual void OnShutdown() {}
-    virtual void OnGuiRender(Gui::UniquePtr& mpGui) {}
+    virtual void onLoad(Fbo::SharedPtr& pFbo) {}
+    virtual void preFrameRender(RenderContext::SharedPtr pCtx) {}
+    virtual void onFrameRender(RenderContext::SharedPtr pCtx) {}
+    virtual void onShutdown() {}
+    virtual void onGuiRender(Gui* mpGui) {}
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) { return false; }
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) { return false; }
     virtual void onResizeSwapChain() {}

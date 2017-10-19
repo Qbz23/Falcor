@@ -53,7 +53,7 @@ void DisplacementMapping::LoadModel(std::string filename)
 }
 
 //Not sure if passing this in is necessary, try without 
-void DisplacementMapping::OnLoad(Fbo::SharedPtr& pDefaultFbo)
+void DisplacementMapping::onLoad(Fbo::SharedPtr& pDefaultFbo)
 {
   //Scene/resources
   LoadTextures();
@@ -99,7 +99,7 @@ void DisplacementMapping::OnLoad(Fbo::SharedPtr& pDefaultFbo)
   mpVars->setSampler("gSampler", Sampler::create(samplerDesc));
 }
 
-void DisplacementMapping::PreFrameRender(RenderContext::SharedPtr pCtx)
+void DisplacementMapping::preFrameRender(RenderContext::SharedPtr pCtx)
 {
   mCamController.update();
 
@@ -123,14 +123,14 @@ void DisplacementMapping::PreFrameRender(RenderContext::SharedPtr pCtx)
   pCtx->pushGraphicsVars(mpVars);
 }
 
-void DisplacementMapping::OnFrameRender(RenderContext::SharedPtr pCtx)
+void DisplacementMapping::onFrameRender(RenderContext::SharedPtr pCtx)
 {
   mpSceneRenderer->renderScene(pCtx.get());
   pCtx->popGraphicsVars();
   pCtx->popGraphicsState();
 }
 
-void DisplacementMapping::OnGuiRender(Gui::UniquePtr& mpGui)
+void DisplacementMapping::onGuiRender(Gui* mpGui)
 {
   static const float floatMax = std::numeric_limits<float>().max();
 

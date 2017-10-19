@@ -4,7 +4,7 @@
 
 using namespace Falcor;
 
-class TerrainGeneration : public Sample
+class TessellationProject : public Sample
 {
 public:
 	void onLoad() override;

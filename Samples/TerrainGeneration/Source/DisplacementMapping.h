@@ -8,10 +8,10 @@ using ModelIstnace = ObjectInstance<Model>;
 class DisplacementMapping : public EffectSample
 {
 public:
-    void OnLoad(Fbo::SharedPtr& pFbo) override;
-    void PreFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnGuiRender(Gui::UniquePtr& mpGui) override;
+    void onLoad(Fbo::SharedPtr& pFbo) override;
+    void preFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
     bool onMouseEvent(const MouseEvent& mouseEvent) override;
     void onResizeSwapChain();

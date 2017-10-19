@@ -7,12 +7,13 @@ using namespace Falcor;
 class InteractivePlane : public EffectSample
 {
   public: 
-    void OnLoad(Fbo::SharedPtr& pDefaultFbo) override;
-    void PreFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnFrameRender(RenderContext::SharedPtr pCtx) override;
-    void OnGuiRender(Gui::UniquePtr& mpGui) override;
+    void onLoad(Fbo::SharedPtr& pDefaultFbo) override;
+    void preFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onFrameRender(RenderContext::SharedPtr pCtx) override;
+    void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
     bool onMouseEvent(const MouseEvent& mouseEvent) override;
+    void onShutdown() override;
 
   private:
     //Vertices in the VAO of the fullscreen quad
