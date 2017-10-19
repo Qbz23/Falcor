@@ -96,15 +96,33 @@ void InteractivePlane::OnFrameRender(RenderContext::SharedPtr pCtx)
 
 void InteractivePlane::OnGuiRender(Gui::UniquePtr& mpGui)
 {
-  if(mpGui->addButton("Reset Height"))
-    mHeightmapPass.shouldResetHeight = true;
-  
-  mpGui->addFloatVar("Radius", mHeightmapPass.psPerFrameData.radius);
-  mpGui->addFloatVar("Height Increase", mHeightmapPass.psPerFrameData.heightIncrease);
+  if (mpGui->beginGroup("Interactive Plane"))
+  {
+    if (mpGui->addButton("Reset Height"))
+      mHeightmapPass.shouldResetHeight = true;
+
+    mpGui->addFloatVar("Radius", mHeightmapPass.psPerFrameData.radius);
+    mpGui->addFloatVar("Height Increase", mHeightmapPass.psPerFrameData.heightIncrease);
+
+    mpGui->endGroup();
+  }
 }
 
 bool InteractivePlane::onKeyEvent(const KeyboardEvent& keyEvent)
 {
+  if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
+  {
+    switch (keyEvent.key)
+    {
+    case KeyboardEvent::Key::R:
+      //resets camera
+      mpCamera->setPosition(vec3(0, 5, 5));
+      mpCamera->setTarget(vec3(0, -1, -1));
+      break;
+    default:
+      break;
+    }
+  }
   return mCamController.onKeyEvent(keyEvent);
 }
 
