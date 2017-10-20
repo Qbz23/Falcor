@@ -53,7 +53,7 @@ void DisplacementMapping::LoadModel(std::string filename)
 }
 
 //Not sure if passing this in is necessary, try without 
-void DisplacementMapping::onLoad(Fbo::SharedPtr& pDefaultFbo)
+void DisplacementMapping::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
   //Scene/resources
   LoadTextures();
@@ -244,15 +244,14 @@ void DisplacementMapping::onGuiRender(Gui* mpGui)
 bool DisplacementMapping::onKeyEvent(const KeyboardEvent& keyEvent)
 {
   bool handled = mCamController.onKeyEvent(keyEvent);
-  //Check for R for camera reset
   if (handled == false)
   {
     if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
     {
       switch (keyEvent.key)
       {
+      //resets camera
       case KeyboardEvent::Key::R:
-        //resets camera
         mpScene->getActiveCamera()->setPosition(vec3(0, 0, 5));
         mpScene->getActiveCamera()->setTarget(vec3(0, 0, -1));
         handled = true;
@@ -312,4 +311,22 @@ void DisplacementMapping::UpdateVars()
   mpVars->setSrv(0, 0, 0, mDiffuseMaps[mTextureIndex]->getSRV());
   mpVars->setSrv(0, 1, 0, mNormalMaps[mTextureIndex]->getSRV());
   mpVars->setSrv(0, 2, 0, mDisplacementMaps[mTextureIndex]->getSRV());
+}
+
+void DisplacementMapping::onShutdown()
+{
+  //Really not sure why i need to do this to have no live objects
+  //shouldnt shared ptrs be releasing when this dtors?
+  mpDefaultRS.reset();
+  mpWireframeRS.reset();
+
+  for (int i = 0; i < kNumTextures; ++i)
+  {
+    mDiffuseMaps[i].reset();
+    mNormalMaps[i].reset();
+    mDisplacementMaps[i].reset();
+  }
+
+  mpState.reset();
+  mpVars.reset();
 }

@@ -8,13 +8,14 @@ using ModelIstnace = ObjectInstance<Model>;
 class DisplacementMapping : public EffectSample
 {
 public:
-    void onLoad(Fbo::SharedPtr& pFbo) override;
+    void onLoad(const Fbo::SharedPtr& pFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
     void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
     bool onMouseEvent(const MouseEvent& mouseEvent) override;
-    void onResizeSwapChain();
+    void onResizeSwapChain() override;
+    void onShutdown() override;
 
   private:
     static const Gui::DropdownList kTexturesDropdown;
@@ -38,7 +39,6 @@ public:
     {
       glm::vec3 edgeFactors = vec3(2, 2, 2);
       float insideFactor = 2;
-
     } mHullPerFrame;
 
     struct DomainPerFrame

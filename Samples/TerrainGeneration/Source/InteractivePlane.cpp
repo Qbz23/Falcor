@@ -1,6 +1,6 @@
 #include "InteractivePlane.h"
 
-void InteractivePlane::onLoad(Fbo::SharedPtr& pDefaultFbo)
+void InteractivePlane::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("InteractivePlane.vs"),
@@ -31,7 +31,7 @@ void InteractivePlane::onLoad(Fbo::SharedPtr& pDefaultFbo)
   mpHeightmap->generateMips();
   mHeightmapPass.mpState = GraphicsState::create();
   mHeightmapPass.mpPass = FullScreenPass::create(
-    appendShaderExtension("Heightmap.ps"));
+   appendShaderExtension("Heightmap.ps"));
   mHeightmapPass.mpVars = GraphicsVars::create(
     mHeightmapPass.mpPass->getProgram()->getActiveVersion()->getReflector());
   mHeightmapPass.psPerFrame = mHeightmapPass.mpVars->getConstantBuffer(0, 1, 0);
@@ -236,5 +236,13 @@ void InteractivePlane::UpdateVars()
 
 void InteractivePlane::onShutdown()
 {
-  mHeightmapPass.mpPass.release();
+  mHeightmapPass.mpPass.reset();
+  mHeightmapPass.mpVars.reset();
+  mHeightmapPass.mpState.reset();
+  mHeightmapPass.psPerFrame.reset();
+  mHeightmapPass.mpFbo.reset();
+
+  mpState.reset();
+  mpVars.reset();
+  mpHeightmap.reset();
 }

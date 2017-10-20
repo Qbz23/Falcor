@@ -7,7 +7,7 @@ using namespace Falcor;
 class InteractivePlane : public EffectSample
 {
   public: 
-    void onLoad(Fbo::SharedPtr& pDefaultFbo) override;
+    void onLoad(const Fbo::SharedPtr& pDefaultFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
     void onGuiRender(Gui* mpGui) override;
@@ -59,5 +59,4 @@ class InteractivePlane : public EffectSample
     Texture::SharedPtr mpHeightmap;
 
     void UpdateVars();
-
 };

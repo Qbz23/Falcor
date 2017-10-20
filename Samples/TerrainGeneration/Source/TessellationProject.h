@@ -18,8 +18,8 @@ public:
 private:
   enum Mode { Intro = 0, Displacement = 1, DynamicPlane = 2, Count = 3 };
   static const Gui::DropdownList kModeDropdown;
-  Mode mMode = Displacement;
-  EffectSample* effects[Mode::Count];
+  Mode mMode = DynamicPlane;
+  EffectSample::UniquePtr effects[Mode::Count];
 
 	vec4 mClearColor = vec4(0.0f, 0.35f, 0.35f, 1.0f);
 };

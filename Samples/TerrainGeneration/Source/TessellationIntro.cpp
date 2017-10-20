@@ -1,6 +1,6 @@
 #include "TessellationIntro.h"
 
-void TessellationIntro::onLoad(Fbo::SharedPtr& pDefaultFbo)
+void TessellationIntro::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("TessellationIntro.vs"),
@@ -108,4 +108,13 @@ void TessellationIntro::UpdateVars()
 {
   auto cbuf = mpVars->getConstantBuffer(0, 0, 0);
   cbuf->setBlob(&mHullPerFrame, 0, sizeof(HullPerFrame));
+}
+
+void TessellationIntro::onShutdown()
+{
+  //Not 100% sure why I need to do this. Maybe b/c of the 
+  //subproject effect sample setup? But if i dont do this,
+  //there are live objects on exit
+  mpVars.reset();
+  mpState.reset();
 }

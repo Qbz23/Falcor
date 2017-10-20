@@ -8,7 +8,9 @@ using namespace Falcor;
 class EffectSample
 {
   public:
-    virtual void onLoad(Fbo::SharedPtr& pFbo) {}
+    using UniquePtr = std::unique_ptr<EffectSample>;
+
+    virtual void onLoad(const Fbo::SharedPtr& pFbo) {}
     virtual void preFrameRender(RenderContext::SharedPtr pCtx) {}
     virtual void onFrameRender(RenderContext::SharedPtr pCtx) {}
     virtual void onShutdown() {}

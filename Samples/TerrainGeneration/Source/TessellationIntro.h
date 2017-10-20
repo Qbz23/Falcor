@@ -7,11 +7,12 @@ using namespace Falcor;
 class TessellationIntro : public EffectSample
 {
   public: 
-    void onLoad(Fbo::SharedPtr& pDefaultFbo) override;
+    void onLoad(const Fbo::SharedPtr& pDefaultFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
     void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
+    void onShutdown() override;
 
   private:
     //Vertices in the VAO of the fullscreen quad

@@ -27,11 +27,11 @@ void TessellationProject::onGuiRender()
 void TessellationProject::onLoad()
 {
   //Needs to be ptr so it calls derived class functions
-  effects[Mode::Intro] = new TessellationIntro();
-  effects[Mode::Displacement] = new DisplacementMapping();
-  effects[Mode::DynamicPlane] = new InteractivePlane();
+  effects[Mode::Intro] = std::make_unique<TessellationIntro>(TessellationIntro());
+  effects[Mode::Displacement] = std::make_unique<DisplacementMapping>(DisplacementMapping());
+  effects[Mode::DynamicPlane] = std::make_unique<InteractivePlane>(InteractivePlane());
 
-  for(uint32_t i = 0; i < Mode::Count; ++i)
+  for(uint32_t i = 0; i <Mode::Count; ++i)
   {
     effects[i]->onLoad(mpDefaultFBO);
   }
@@ -39,21 +39,23 @@ void TessellationProject::onLoad()
 
 void TessellationProject::onFrameRender()
 {
-	mpRenderContext->clearFbo(mpDefaultFBO.get(), mClearColor, 1.0f, 0, FboAttachmentType::All);
+  mpRenderContext->clearFbo(mpDefaultFBO.get(), mClearColor, 1.0f, 0, FboAttachmentType::All);
   effects[mMode]->preFrameRender(mpRenderContext);
+
   //Get around that annoying multiple buffer swapchain d3d12 error 
   mpRenderContext->getGraphicsState()->setFbo(mpDefaultFBO);
   effects[mMode]->onFrameRender(mpRenderContext);
+
 	//Todo this is rendering double text. Not sure why.
 	//renderText(getFpsMsg(), glm::vec2(10, 30));
 }
 
 void TessellationProject::onShutdown()
 {
-  for(uint32_t i = 0; i < Mode::Count; ++i)
+  for (uint32_t i = 0; i < Mode::Count; ++i)
   {
     effects[i]->onShutdown();
-    delete effects[i];
+    effects[i].release();
   }
 }
 
