@@ -23,6 +23,7 @@
     <ProjectGuid>{252000EB-DE42-4640-9C51-4217E58181A9}</ProjectGuid>
     <RootNamespace>TerrainGeneration</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.15063.0</WindowsTargetPlatformVersion>
+    <ProjectName>TessellationProject</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -146,6 +147,18 @@
     <FxCompile Include="Data\InteractivePlane.ps.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.ds.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.hs.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.ps.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.vs.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </FxCompile>
     <FxCompile Include="Data\TessellationIntro.ds.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </FxCompile>
@@ -162,6 +175,7 @@
   <ItemGroup>
     <ClCompile Include="Source\DisplacementMapping.cpp" />
     <ClCompile Include="Source\InteractivePlane.cpp" />
+    <ClCompile Include="Source\TerrainGeneration.cpp" />
     <ClCompile Include="Source\TessellationIntro.cpp" />
     <ClCompile Include="Source\TessellationProject.cpp" />
   </ItemGroup>
@@ -169,6 +183,7 @@
     <ClInclude Include="Source\DisplacementMapping.h" />
     <ClInclude Include="Source\EffectSample.h" />
     <ClInclude Include="Source\InteractivePlane.h" />
+    <ClInclude Include="Source\TerrainGeneration.h" />
     <ClInclude Include="Source\TessellationIntro.h" />
     <ClInclude Include="Source\TessellationProject.h" />
   </ItemGroup>

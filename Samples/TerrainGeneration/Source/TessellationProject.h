@@ -16,7 +16,8 @@ public:
 	void onGuiRender() override;
 
 private:
-  enum Mode { Intro = 0, Displacement = 1, DynamicPlane = 2, Count = 3 };
+  enum Mode { Intro = 0, Displacement = 1, DynamicPlane = 2, Terrain = 3, 
+              Count = 4 };
   static const Gui::DropdownList kModeDropdown;
   Mode mMode = DynamicPlane;
   EffectSample::UniquePtr effects[Mode::Count];

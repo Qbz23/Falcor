@@ -54,20 +54,20 @@ bool TessellationIntro::onKeyEvent(const KeyboardEvent& keyEvent)
 
   switch (keyEvent.key)
   {
-    case KeyboardEvent::Key::Left:
-      mHullPerFrame.edgeFactors -= vec4(1, 1, 1, 1);
-      break;
-    case KeyboardEvent::Key::Right:
-      mHullPerFrame.edgeFactors += vec4(1, 1, 1, 1);
-      break;
-    case KeyboardEvent::Key::Up:
-      mHullPerFrame.insideFactors += vec2(1, 1);
-      break;
-    case KeyboardEvent::Key::Down:
-      mHullPerFrame.insideFactors -= vec2(1, 1);
-      break;
-    default:
-      return false;
+  case KeyboardEvent::Key::Left:
+    mHullPerFrame.edgeFactors -= vec4(1, 1, 1, 1);
+    break;
+  case KeyboardEvent::Key::Right:
+    mHullPerFrame.edgeFactors += vec4(1, 1, 1, 1);
+    break;
+  case KeyboardEvent::Key::Up:
+    mHullPerFrame.insideFactors += vec2(1, 1);
+    break;
+  case KeyboardEvent::Key::Down:
+    mHullPerFrame.insideFactors -= vec2(1, 1);
+    break;
+  default:
+    return false;
   }
 
   return true;

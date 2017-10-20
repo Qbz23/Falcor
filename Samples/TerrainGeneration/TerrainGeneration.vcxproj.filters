@@ -4,43 +4,67 @@
     <Filter Include="Data">
       <UniqueIdentifier>{b3f1ef16-e956-47c8-9ff2-5551f0fa6dc4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Data\Displacement">
+      <UniqueIdentifier>{a1e06cd9-00ed-43af-9bcc-9db38d5c4632}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data\InteractivePlane">
+      <UniqueIdentifier>{03de14bf-f83c-4664-9602-e5227803103c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data\TerrainGeneration">
+      <UniqueIdentifier>{c0141663-e4dd-4400-8376-88369d69fa76}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data\TessellationIntro">
+      <UniqueIdentifier>{8ca87525-8981-4b7b-b055-b77525031c8d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Data\Displacement.ps.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
     <FxCompile Include="Data\Displacement.ds.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\Displacement</Filter>
     </FxCompile>
     <FxCompile Include="Data\Displacement.hs.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\Displacement</Filter>
     </FxCompile>
-    <FxCompile Include="Data\TessellationIntro.ds.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TessellationIntro.hs.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TessellationIntro.ps.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\TessellationIntro.vs.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\InteractivePlane.vs.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
-    <FxCompile Include="Data\InteractivePlane.ps.hlsl">
-      <Filter>Data</Filter>
+    <FxCompile Include="Data\Displacement.ps.hlsl">
+      <Filter>Data\Displacement</Filter>
     </FxCompile>
     <FxCompile Include="Data\Heightmap.ps.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\InteractivePlane</Filter>
     </FxCompile>
     <FxCompile Include="Data\InteractivePlane.ds.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\InteractivePlane</Filter>
     </FxCompile>
     <FxCompile Include="Data\InteractivePlane.hs.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\InteractivePlane</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.ps.hlsl">
+      <Filter>Data\InteractivePlane</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\InteractivePlane.vs.hlsl">
+      <Filter>Data\InteractivePlane</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.ds.hlsl">
+      <Filter>Data\TerrainGeneration</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.hs.hlsl">
+      <Filter>Data\TerrainGeneration</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.ps.hlsl">
+      <Filter>Data\TerrainGeneration</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TerrainGeneration.vs.hlsl">
+      <Filter>Data\TerrainGeneration</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.ds.hlsl">
+      <Filter>Data\TessellationIntro</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.hs.hlsl">
+      <Filter>Data\TessellationIntro</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.ps.hlsl">
+      <Filter>Data\TessellationIntro</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\TessellationIntro.vs.hlsl">
+      <Filter>Data\TessellationIntro</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
@@ -48,6 +72,7 @@
     <ClCompile Include="Source\TessellationProject.cpp" />
     <ClCompile Include="Source\DisplacementMapping.cpp" />
     <ClCompile Include="Source\InteractivePlane.cpp" />
+    <ClCompile Include="Source\TerrainGeneration.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\TessellationIntro.h" />
@@ -55,5 +80,6 @@
     <ClInclude Include="Source\EffectSample.h" />
     <ClInclude Include="Source\DisplacementMapping.h" />
     <ClInclude Include="Source\InteractivePlane.h" />
+    <ClInclude Include="Source\TerrainGeneration.h" />
   </ItemGroup>
 </Project>
