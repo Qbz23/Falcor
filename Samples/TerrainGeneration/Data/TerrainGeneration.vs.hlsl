@@ -1,19 +1,23 @@
-//RN just copies of tessellation intro shaders
-
 struct VS_IN
 {
-	float2 pos : POSITION;
+	float4 pos : POSITION;
 	float2 tex : TEXCOORD0;
 };
 
 struct VS_OUT
 {
-	float4 position : Position;
+  float3 posW : POS;
+  float2 tex : TEXCOORD0;
 };
+
+SamplerState gSampler;
+Texture2D gHeightmap;
 
 VS_OUT main(VS_IN vIn)
 {
 	VS_OUT output;
-	output.position = float4(vIn.pos, 0, 1);
+  output.tex = vIn.tex;
+	output.posW = vIn.pos.xyz;
+  //output.posW.y = gHeightmap.SampleLevel(gSampler, vIn.tex, 0).x;
 	return output;
 }

@@ -3,17 +3,38 @@
 
 void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
-  mpState = GraphicsState::create();
+  auto program = GraphicsProgram::createFromFile(
+    appendShaderExtension("TerrainGeneration.vs"),
+    appendShaderExtension("TerrainGeneration.ps"),
+    "",
+    appendShaderExtension("TerrainGeneration.hs"),
+    appendShaderExtension("TerrainGeneration.ds"));
+  mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
-  CreatePatch(vec2(1024, 1024));
+  mpCamera = Camera::create();
+  mCamController.attachCamera(mpCamera);
+
+  mpState = GraphicsState::create();
+  mpState->setProgram(program);
+  mpState->setFbo(pDefaultFbo);
+  CreatePatch(vec2(256, 256));
 }
 
 void TerrainGeneration::preFrameRender(RenderContext::SharedPtr pCtx)
 {
+  mCamController.update();
+
+  UpdateVars();
+  pCtx->pushGraphicsState(mpState);
+  pCtx->pushGraphicsVars(mpVars);
 }
 
 void TerrainGeneration::onFrameRender(RenderContext::SharedPtr pCtx)
 {
+  pCtx->drawIndexed(mIndexCount, 0, 0);
+  //pCtx->draw(1024, 0);
+  pCtx->popGraphicsVars();
+  pCtx->popGraphicsState();
 }
 
 void TerrainGeneration::onGuiRender(Gui* mpGui)
@@ -26,7 +47,12 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
 
 bool TerrainGeneration::onKeyEvent(const KeyboardEvent& keyEvent)
 {
-  return true;
+  return mCamController.onKeyEvent(keyEvent);
+}
+
+bool TerrainGeneration::onMouseEvent(const MouseEvent& mouseEvent)
+{
+  return mCamController.onMouseEvent(mouseEvent);
 }
 
 void TerrainGeneration::onShutdown()
@@ -45,22 +71,18 @@ void TerrainGeneration::CreatePatch(vec2 heightmapDimensions)
 
 void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
 {
-  static const uint32_t sCellsPerPatch = 64;
-
-  //How many patches there should be
-  int numRows = (int)(((heightmapDimensions.y - 1) / sCellsPerPatch) + 1);
-  int numCols = (int)(((heightmapDimensions.x - 1) / sCellsPerPatch) + 1);
+  //Probably hook this up to a ui eventually
+  static const int numRows = 32;
+  static const int numCols = 32;
+  static const float patchW = 1.0f;
+  static const float patchH = 1.0f;
+  static const float halfW = (numCols * patchW) / 2.0f;
+  static const float halfH = (numRows * patchH) / 2.0f;
+  static const float deltaU = 1.0f / (numCols - 1);
+  static const float deltaV = 1.0f / (numRows - 1);
 
   std::vector<Vertex> verts;
   verts.resize(numRows * numCols);
-
-  float patchW = heightmapDimensions.x / (numCols - 1);
-  float patchH = heightmapDimensions.y / (numRows - 1);
-  float halfW = heightmapDimensions.x / 2.0f;
-  float halfH = heightmapDimensions.y / 2.0f;
-  float deltaU = heightmapDimensions.x / numCols;
-  float deltaV = heightmapDimensions.y / numRows;
-
   for (int i = 0; i < numRows; ++i)
   {
     float zPos = -halfH + patchH * i;
@@ -80,7 +102,7 @@ void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
   auto ib = CreatePatchIndexBuffer(numRows, numCols);
 
   //create VB
-  const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(verts.data()));
+  const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*verts.size());
   auto vertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex,
     Buffer::CpuAccess::Write, (void*)verts.data());
 
@@ -95,6 +117,7 @@ void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
   Vao::BufferVec buffers{ vertexBuffer };
   auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers, 
     ib, Falcor::ResourceFormat::R32Uint);
+  //auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
   //Set it into graphics state
   mpState->setVao(vao);
 }
@@ -103,7 +126,8 @@ Buffer::SharedPtr TerrainGeneration::CreatePatchIndexBuffer(int numRows, int num
 {
   int numFaces = (numRows - 1) * (numCols - 1);
   std::vector<uint32_t> indices;
-  indices.resize(4 * numFaces);
+  mIndexCount = 4 * numFaces;
+  indices.resize(mIndexCount);
 
   //index buffer index
   int k = 0;
@@ -115,18 +139,24 @@ Buffer::SharedPtr TerrainGeneration::CreatePatchIndexBuffer(int numRows, int num
       indices[k] = i * numCols + j;
       //top right
       indices[k + 1] = indices[k] + 1;
+      //bot right
+      indices[k + 3] = (i + 1) * numCols + j + 1;
       //bot left
       indices[k + 2] = (i + 1) * numCols + j;
-      //bot right
-      indices[k + 3] = indices[k + 2] + 1;
 
       k += 4;
     }
   }
 
   return Buffer::create(
-    indices.size() * sizeof(uint32_t),
+    mIndexCount * sizeof(uint32_t),
     Buffer::BindFlags::Index,
     Buffer::CpuAccess::None,
     indices.data());
+}
+
+void TerrainGeneration::UpdateVars()
+{
+  mpVars->getConstantBuffer("DSPerFrame")->setBlob(
+    &mpCamera->getViewProjMatrix(), 0, sizeof(glm::mat4));
 }

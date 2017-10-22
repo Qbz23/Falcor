@@ -12,6 +12,7 @@ class TerrainGeneration : public EffectSample
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
     void onGuiRender(Gui* mpGui) override;
     bool onKeyEvent(const KeyboardEvent& keyEvent) override;
+    bool onMouseEvent(const MouseEvent& mouseEvent) override;
     void onShutdown() override;
 
   private:
@@ -29,4 +30,10 @@ class TerrainGeneration : public EffectSample
 
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;
+
+    Camera::SharedPtr mpCamera;
+    FirstPersonCameraController mCamController;
+
+    void UpdateVars();
+    uint32_t mIndexCount;
 };
