@@ -14,8 +14,13 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpCamera = Camera::create();
   mCamController.attachCamera(mpCamera);
 
+  auto rsDesc = RasterizerState::Desc();
+  rsDesc.setFillMode(RasterizerState::FillMode::Wireframe);
+  auto rs = RasterizerState::create(rsDesc);
+
   mpState = GraphicsState::create();
   mpState->setProgram(program);
+  mpState->setRasterizerState(rs);
   mpState->setFbo(pDefaultFbo);
   CreatePatch(vec2(256, 256));
 }
@@ -74,8 +79,8 @@ void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
   //Probably hook this up to a ui eventually
   static const int numRows = 32;
   static const int numCols = 32;
-  static const float patchW = 1.0f;
-  static const float patchH = 1.0f;
+  static const float patchW = 2.0f;
+  static const float patchH = 2.0f;
   static const float halfW = (numCols * patchW) / 2.0f;
   static const float halfH = (numRows * patchH) / 2.0f;
   static const float deltaU = 1.0f / (numCols - 1);
@@ -157,6 +162,8 @@ Buffer::SharedPtr TerrainGeneration::CreatePatchIndexBuffer(int numRows, int num
 
 void TerrainGeneration::UpdateVars()
 {
+  mpVars->getConstantBuffer("HSPerFrame")->setBlob(
+    &mpCamera->getPosition(), 0, sizeof(glm::vec3));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(
     &mpCamera->getViewProjMatrix(), 0, sizeof(glm::mat4));
 }

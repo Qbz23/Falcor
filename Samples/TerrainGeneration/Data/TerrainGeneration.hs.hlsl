@@ -1,10 +1,14 @@
 //RN just copies of tessellation intro shaders
 
-//cbuffer HSPerFrame : register(b0)
-//{
-//  float4 edgeFactors;
-//	float2 insideFactors;
-//};
+static const float kMaxDist = 16;
+static const float kMinDist = 0.01;
+static const float kMinTess = 2;
+static const float kMaxTess = 64;
+
+cbuffer HSPerFrame : register(b0)
+{
+  float3 eyePos;
+};
 
 struct VS_OUT
 {
@@ -37,17 +41,32 @@ HS_OUT main(InputPatch<VS_OUT, 4> ip, uint cpid : SV_OutputControlPointID, uint 
 	return output;
 }
 
+int calcTessFactor(float3 pos)
+{
+  float dist = distance(pos, eyePos);
+  float t = 1 - saturate((dist - kMinDist) / (kMaxDist - kMinDist));
+  return (int)lerp(kMinTess, kMaxTess, t);
+}
+
 HS_CONST_OUT HSConstant(InputPatch<VS_OUT, 4> ip, uint pid : SV_PrimitiveID)
 {
 	HS_CONST_OUT output;
 
-	[unroll(4)]
-	for (int i = 0; i < 4; ++i)
-		output.edges[i] = 32;//edgeFactors[i];
+  float3 left = (ip[0].posW + ip[2].posW) / 2.0f;
+  float3 top = (ip[0].posW + ip[1].posW) / 2.0f;
+  float3 right = (ip[1].posW + ip[3].posW) / 2.0f;
+  float3 bot = (ip[2].posW + ip[3].posW) / 2.0f;
+  float3 center = (top + bot) / 2.0f;
+  
+  output.edges[0] = calcTessFactor(left);
+  output.edges[1] = calcTessFactor(top);
+  output.edges[2] = calcTessFactor(right);
+  output.edges[3] = calcTessFactor(bot);
+  int centerTess = calcTessFactor(center);
 
 	[unroll(2)]
 	for (int j = 0; j < 2; ++j)
-		output.inside[j] = 32;//insideFactors[j];
+		output.inside[j] = centerTess;
 
 	return output;
 }
