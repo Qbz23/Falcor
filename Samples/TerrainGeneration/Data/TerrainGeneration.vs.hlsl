@@ -18,6 +18,6 @@ VS_OUT main(VS_IN vIn)
 	VS_OUT output;
   output.tex = vIn.tex;
 	output.posW = vIn.pos.xyz;
-  //output.posW.y = gHeightmap.SampleLevel(gSampler, vIn.tex, 0).x;
+  output.posW.y = gHeightmap.SampleLevel(gSampler, vIn.tex, 0).x;
 	return output;
 }

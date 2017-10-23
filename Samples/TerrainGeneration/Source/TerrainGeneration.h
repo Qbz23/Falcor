@@ -36,4 +36,6 @@ class TerrainGeneration : public EffectSample
 
     void UpdateVars();
     uint32_t mIndexCount;
+
+    Texture::SharedPtr mpHeightmap;
 };

@@ -1,6 +1,6 @@
 //RN just copies of tessellation intro shaders
 
-static const float kMaxDist = 16;
+static const float kMaxDist = 350;
 static const float kMinDist = 0.01;
 static const float kMinTess = 2;
 static const float kMaxTess = 64;
