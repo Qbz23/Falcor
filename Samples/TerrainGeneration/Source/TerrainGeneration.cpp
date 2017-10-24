@@ -25,6 +25,18 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   CreatePatch(vec2(256, 256));
 
   mpHeightmap = createTextureFromFile("RedmondHeightMap.png", true, false);
+
+  //Trilinear Wrap Sampler
+  Sampler::Desc samplerDesc;
+  samplerDesc.setFilterMode(
+    Sampler::Filter::Linear,
+    Sampler::Filter::Linear,
+    Sampler::Filter::Linear);
+  samplerDesc.setAddressingMode(
+    Sampler::AddressMode::Clamp,
+    Sampler::AddressMode::Clamp,
+    Sampler::AddressMode::Clamp);
+  mpVars->setSampler("gSampler", Sampler::create(samplerDesc));
 }
 
 void TerrainGeneration::preFrameRender(RenderContext::SharedPtr pCtx)

@@ -25,6 +25,33 @@ struct DS_OUT
 Texture2D gHeightmap;
 SamplerState gSampler;
 
+float4 SampleKernel(float2 tex)
+{
+  //TODO fix this, actually do 1 texel, send up h/w
+  const float dTex = 1.0f / 1081.0f;
+  const float distances[5] = {-2, -1, 0, 1, 2};
+  const float weights[25] = {
+    0.003765f,	0.015019f,	0.023792f,	0.015019f,	0.003765f,
+    0.015019f,	0.059912f,	0.094907f,	0.059912f,	0.015019f,
+    0.023792f,	0.094907f,	0.150342f,	0.094907f,	0.023792f,
+    0.015019f,	0.059912f,	0.094907f,	0.059912f,	0.015019f,
+    0.003765f,	0.015019f,	0.023792f,	0.015019f,	0.003765f};
+
+  float4 result = float4(0, 0, 0, 0);
+  [unroll(5)]
+  for(int i = 0; i < 5; ++i)
+  {
+    [unroll(5)]
+    for(int j = 0; j < 5; ++j)
+    {
+      float2 sampleTex = tex + float2(dTex * distances[i], dTex * distances[j]);
+      result += weights[5 * i + j] * gHeightmap.SampleLevel(gSampler, sampleTex, 0);
+    }
+  }
+
+  return result;
+}
+
 [domain("quad")]
 DS_OUT main(HS_CONST_OUT input, float2 UV: SV_DomainLocation,
 	const OutputPatch<HS_OUT, 4> patch)
@@ -40,12 +67,11 @@ DS_OUT main(HS_CONST_OUT input, float2 UV: SV_DomainLocation,
   float2 texBotMid = lerp(patch[2].tex, patch[3].tex, UV.x);
   float2 tex = lerp(texTopMid, texBotMid, UV.y);
 
-  float4 heightmapColor = gHeightmap.SampleLevel(gSampler, tex, 0);
+  float4 heightmapColor = SampleKernel(tex);
   output.pos.y += 50 * heightmapColor.x;
   output.posW = output.pos.xyz;
   output.pos = mul(output.pos, viewProj);
-  
-  //output.color = float4(tex.xy, UV.x, 1);
+
   output.color = heightmapColor;
 	return output;
 }
