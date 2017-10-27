@@ -1,0 +1,20 @@
+GPU GEMS 2 - Using Vertex Texture Displacement for Realistic Water Rendering 
+https://developer.nvidia.com/gpugems/GPUGems2/gpugems2_chapter18.html
+
+Simulting Ocean Water - Jerry Tessendorf 2001
+http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.161.9102&rep=rep1&type=pdf
+
+GPU-Based Real-time simulation and rendering of Unbounded Ocean Surface 2005
+http://www-evasion.inrialpes.fr/people/Fabrice.Neyret/images/fluids-nuages/waves/Jonathan/articlesCG/GPUBasedRealTimeSimulationAndRendering2005.pdf
+
+Terrain and Water Rendering with Hardware Tessellation - Xavier Bonaventura Brugues 2010
+http://ima.udg.edu/~xavierb/BonaventuraFDP.pdf
+
+GameDev.net - River Simulation Thread
+https://www.gamedev.net/forums/topic/607307-river-simulation/
+
+Game Dev Stack Exchange - Shallow Water Equation
+https://gamedev.stackexchange.com/questions/98142/height-field-shallow-water-eqation-water-simulation-with-ground-height
+
+A Particle-Guided Method for Animating Splashing Stream Water in Real Time - Lei and Chang 2008
+http://www.cs.nthu.edu.tw/~chunfa/PG08_1227.pdf
