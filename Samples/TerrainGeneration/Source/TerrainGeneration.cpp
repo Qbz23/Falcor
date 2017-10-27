@@ -109,6 +109,7 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
     {
       mpGui->addDropdown("Heightmap", kHeightmapDropdown, mHeightmapIndex);
       mpGui->addFloatVar("MaxHeight", mDsPerFrame.maxHeight, kMinHeight);
+      mPsPerFrame.maxHeight = mDsPerFrame.maxHeight;
       mpGui->endGroup();
     }
 
@@ -118,6 +119,12 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
       mpGui->addFloatVar("Tess Far Distance", mHsPerFrame.maxDistance, kSmallestMaxDistance);
       mpGui->addIntVar("Near Tess Factor", mHsPerFrame.minTessFactor, kSmallestTessFactor, kLargestTessFactor);
       mpGui->addIntVar("Far Tess Factor", mHsPerFrame.maxTessFactor, kSmallestTessFactor, kLargestTessFactor);
+      mpGui->endGroup();
+    }
+
+    if (mpGui->beginGroup("Color"))
+    {
+      mpGui->addFloatVar("Height Color Offset", mPsPerFrame.heightColorOffset);
       mpGui->endGroup();
     }
     mpGui->endGroup();
@@ -228,9 +235,11 @@ void TerrainGeneration::UpdateVars()
   vec3 camPos = mpCamera->getPosition();
   mHsPerFrame.eyePos = camPos;
   mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
+  mPsPerFrame.eyePos = camPos;
+
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
-  mpVars->getConstantBuffer("PSPerFrame")->setBlob(&camPos, 0, sizeof(glm::vec3));
+  mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
   mpVars->setTexture("gHeightmap", mHeightmaps[mHeightmapIndex]);
 }
 

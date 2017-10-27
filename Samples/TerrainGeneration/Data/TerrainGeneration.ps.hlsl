@@ -7,13 +7,20 @@ static const float3 colors[6] = {
   float3(1.0f, 1.0f, 1.0f)
 };
 
+cbuffer PSPerFrame : register(b2)
+{
+  float3 eyePos;
+  float maxHeight;
+  float heightColorOffset;
+}
+
 float3 GetColorFromHeight(float height)
 {
-  //TODO this should be based on max height which is passed to ds
-  //[0, 50]
-  height += 1;
-  height /= 10; // 5 color intervals of 10 each
-  height = max(height, 0); //not deal with negative, anything below 0 is 0.
+  height += heightColorOffset;
+  //put height into 5 intervals
+  height /= (maxHeight / 5.0f);
+  //not deal with negative, anything below 0 is 0.
+  height = max(height, 0); 
   float t = frac(height);
   int index = floor(height);
   if (index < 5)
@@ -24,11 +31,6 @@ float3 GetColorFromHeight(float height)
   {
     return colors[5];
   }
-}
-
-cbuffer PSPerFrame : register(b2)
-{
-  float3 eyePos;
 }
 
 struct DS_OUT

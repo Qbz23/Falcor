@@ -30,13 +30,6 @@ class TerrainGeneration : public EffectSample
       vec2 uv;
     };
 
-    struct DsPerFrame
-    {
-      glm::mat4 viewProj;
-      float maxHeight = 10.0f;
-    } mDsPerFrame;
-    const float kMinHeight = 0.1f;
-
     struct HsPerFrame
     {
       vec3 eyePos;
@@ -49,6 +42,21 @@ class TerrainGeneration : public EffectSample
     const float kSmallestMaxDistance = 0.01f;
     const int kSmallestTessFactor = 2;
     const int kLargestTessFactor = 64;
+
+    struct DsPerFrame
+    {
+      glm::mat4 viewProj;
+      float maxHeight = 10.0f; //This should be a var
+    } mDsPerFrame;
+    const float kMinHeight = 0.01f;
+
+    struct PsPerFrame
+    {
+      vec3 eyePos;
+      float maxHeight = 10.0f;
+      //Add or subtract first before determining color
+      float heightColorOffset = 0.0f;
+    } mPsPerFrame;
 
     //Creates Patch VAO and sets it in to gfx state
     void TerrainGeneration::CreatePatchVao(int numRows, int numCols, float patchSize);
@@ -76,5 +84,4 @@ class TerrainGeneration : public EffectSample
     void LoadHeightmaps();
     uint32_t mHeightmapIndex = 0;
     Texture::SharedPtr mHeightmaps[kNumHeightmaps];
-
 };
