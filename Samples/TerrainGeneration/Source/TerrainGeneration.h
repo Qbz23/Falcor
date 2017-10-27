@@ -64,8 +64,17 @@ class TerrainGeneration : public EffectSample
     void UpdateVars();
     uint32_t mIndexCount;
 
-    Texture::SharedPtr mpHeightmap;
     //Maybe generalize out to a util? some effects samples use similar code like this
     RasterizerState::SharedPtr mpWireframeRs;
     RasterizerState::SharedPtr mpDefaultRs;
+
+    //Textures
+    static const Gui::DropdownList kHeightmapDropdown;
+    static const int kNumHeightmaps = 5;
+    //{ "Redmond", "Colorado", "Philadelphia", "Arizona", "Maine" };
+    static const std::string mHeightmapNames[kNumHeightmaps];
+    void LoadHeightmaps();
+    uint32_t mHeightmapIndex = 0;
+    Texture::SharedPtr mHeightmaps[kNumHeightmaps];
+
 };

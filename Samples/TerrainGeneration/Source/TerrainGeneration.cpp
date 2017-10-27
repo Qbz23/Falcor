@@ -1,6 +1,18 @@
 
 #include "TerrainGeneration.h"
 
+const std::string TerrainGeneration::mHeightmapNames[kNumHeightmaps] =
+{ "Redmond", "Colorado", "Philadelphia", "Arizona", "Maine" };
+
+const Gui::DropdownList TerrainGeneration::kHeightmapDropdown
+{
+  { 0, mHeightmapNames[0] },
+  { 1, mHeightmapNames[1] },
+  { 2, mHeightmapNames[2] },
+  { 3, mHeightmapNames[3] },
+  { 4, mHeightmapNames[4] },
+};
+
 void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
@@ -25,7 +37,7 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   
   mpState->setFbo(pDefaultFbo);
   CreatePatchVao(kInitialNumRows, kInitialNumCols, kInitialPatchW);
-  mpHeightmap = createTextureFromFile("RedmondHeightmap.png", true, false);
+  LoadHeightmaps();
 
   //Trilinear Wrap Sampler
   Sampler::Desc samplerDesc;
@@ -93,9 +105,15 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
       mpGui->endGroup();
     }
 
-    if (mpGui->beginGroup("Tessellation/Displacement"))
+    if (mpGui->beginGroup("Displacement"))
     {
+      mpGui->addDropdown("Heightmap", kHeightmapDropdown, mHeightmapIndex);
       mpGui->addFloatVar("MaxHeight", mDsPerFrame.maxHeight, kMinHeight);
+      mpGui->endGroup();
+    }
+
+    if (mpGui->beginGroup("Tessellation"))
+    {
       mpGui->addFloatVar("Tess Near Distance", mHsPerFrame.minDistance, kSmallestMinDistance);
       mpGui->addFloatVar("Tess Far Distance", mHsPerFrame.maxDistance, kSmallestMaxDistance);
       mpGui->addIntVar("Near Tess Factor", mHsPerFrame.minTessFactor, kSmallestTessFactor, kLargestTessFactor);
@@ -213,5 +231,14 @@ void TerrainGeneration::UpdateVars()
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&camPos, 0, sizeof(glm::vec3));
-  mpVars->setTexture("gHeightmap", mpHeightmap);
+  mpVars->setTexture("gHeightmap", mHeightmaps[mHeightmapIndex]);
+}
+
+void TerrainGeneration::LoadHeightmaps()
+{
+  for (int i = 0; i < kNumHeightmaps; ++i)
+  {
+    std::string heightmapFile = mHeightmapNames[i] + "Heightmap.png";
+    mHeightmaps[i] = createTextureFromFile(heightmapFile, true, false);
+  }
 }
