@@ -1,13 +1,10 @@
-//RN just copies of tessellation intro shaders
-
-static const float kMaxDist = 350;
-static const float kMinDist = 0.01;
-static const float kMinTess = 2;
-static const float kMaxTess = 64;
-
 cbuffer HSPerFrame : register(b0)
 {
   float3 eyePos;
+  float minDistance;
+  float maxDistance;
+  int minTessFactor;
+  int maxTessFactor;
 };
 
 struct VS_OUT
@@ -44,8 +41,8 @@ HS_OUT main(InputPatch<VS_OUT, 4> ip, uint cpid : SV_OutputControlPointID, uint 
 int calcTessFactor(float3 pos)
 {
   float dist = distance(pos, eyePos);
-  float t = 1 - saturate((dist - kMinDist) / (kMaxDist - kMinDist));
-  return (int)lerp(kMinTess, kMaxTess, t);
+  float t = 1 - saturate((dist - minDistance) / (maxDistance - minDistance));
+  return (int)lerp(minTessFactor, maxTessFactor, t);
 }
 
 HS_CONST_OUT HSConstant(InputPatch<VS_OUT, 4> ip, uint pid : SV_PrimitiveID)

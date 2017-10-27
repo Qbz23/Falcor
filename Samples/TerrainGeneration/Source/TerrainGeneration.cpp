@@ -13,18 +13,19 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 
   mpCamera = Camera::create();
   mCamController.attachCamera(mpCamera);
+  mCamController.setCameraSpeed(kInitialCameraSpeed);
 
   auto rsDesc = RasterizerState::Desc();
+  mpDefaultRs = RasterizerState::create(rsDesc);
   rsDesc.setFillMode(RasterizerState::FillMode::Wireframe);
-  auto rs = RasterizerState::create(rsDesc);
+  mpWireframeRs = RasterizerState::create(rsDesc);
 
   mpState = GraphicsState::create();
   mpState->setProgram(program);
-  //mpState->setRasterizerState(rs);
+  
   mpState->setFbo(pDefaultFbo);
-  CreatePatch(vec2(256, 256));
-
-  mpHeightmap = createTextureFromFile("RedmondHeightMap.png", true, false);
+  CreatePatchVao(kInitialNumRows, kInitialNumCols, kInitialPatchW);
+  mpHeightmap = createTextureFromFile("RedmondHeightmap.png", true, false);
 
   //Trilinear Wrap Sampler
   Sampler::Desc samplerDesc;
@@ -51,7 +52,6 @@ void TerrainGeneration::preFrameRender(RenderContext::SharedPtr pCtx)
 void TerrainGeneration::onFrameRender(RenderContext::SharedPtr pCtx)
 {
   pCtx->drawIndexed(mIndexCount, 0, 0);
-  //pCtx->draw(1024, 0);
   pCtx->popGraphicsVars();
   pCtx->popGraphicsState();
 }
@@ -60,6 +60,48 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
 {
   if (mpGui->beginGroup("Terrain Generation"))
   {
+    static float cameraSpeed = kInitialCameraSpeed;
+    if (mpGui->addFloatVar("Camera Speed", cameraSpeed, 0.1f))
+    {
+      mCamController.setCameraSpeed(cameraSpeed);
+    }
+    static bool isWireframe = false; //initially not in wireframe
+    if (mpGui->addCheckBox("Wireframe", isWireframe))
+    {
+      if (isWireframe)
+        mpState->setRasterizerState(mpWireframeRs);
+      else
+        mpState->setRasterizerState(mpDefaultRs);
+    }
+
+    if (mpGui->beginGroup("Patch Geometry"))
+    {
+      //Maybe these should be stored somewhere else but this is only place used
+      static int numRows = kInitialNumRows;
+      static int numColumns = kInitialNumCols;
+      static float patchWidth = kInitialPatchW;
+
+      mpGui->addIntVar("Num Rows", numRows, 1, kMaxRows);
+      mpGui->addIntVar("Num Cols", numColumns, 1, kMaxCols);
+      mpGui->addFloatVar("Patch Wdith", patchWidth, kMinPatchW);
+
+      if (mpGui->addButton("Re-generate Patches"))
+      {
+        mpState->setVao(nullptr);
+        CreatePatchVao(numRows, numColumns, patchWidth);
+      }
+      mpGui->endGroup();
+    }
+
+    if (mpGui->beginGroup("Tessellation/Displacement"))
+    {
+      mpGui->addFloatVar("MaxHeight", mDsPerFrame.maxHeight, kMinHeight);
+      mpGui->addFloatVar("Tess Near Distance", mHsPerFrame.minDistance, kSmallestMinDistance);
+      mpGui->addFloatVar("Tess Far Distance", mHsPerFrame.maxDistance, kSmallestMaxDistance);
+      mpGui->addIntVar("Near Tess Factor", mHsPerFrame.minTessFactor, kSmallestTessFactor, kLargestTessFactor);
+      mpGui->addIntVar("Far Tess Factor", mHsPerFrame.maxTessFactor, kSmallestTessFactor, kLargestTessFactor);
+      mpGui->endGroup();
+    }
     mpGui->endGroup();
   }
 }
@@ -83,31 +125,21 @@ void TerrainGeneration::onShutdown()
   mpState.reset();
 }
 
-void TerrainGeneration::CreatePatch(vec2 heightmapDimensions)
+void TerrainGeneration::CreatePatchVao(int numRows, int numCols, float patchSize)
 {
-  CreatePatchVAO(heightmapDimensions);
-}
-
-void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
-{
-  //Probably hook this up to a ui eventually
-  static const int numRows = 32;
-  static const int numCols = 32;
-  static const float patchW = 4.0f;
-  static const float patchH = 4.0f;
-  static const float halfW = (numCols * patchW) / 2.0f;
-  static const float halfH = (numRows * patchH) / 2.0f;
-  static const float deltaU = 1.0f / (numCols - 1);
-  static const float deltaV = 1.0f / (numRows - 1);
+  const float halfW = (numCols * patchSize) / 2.0f;
+  const float halfH = (numRows * patchSize) / 2.0f;
+  const float deltaU = 1.0f / (numCols - 1);
+  const float deltaV = 1.0f / (numRows - 1);
 
   std::vector<Vertex> verts;
   verts.resize(numRows * numCols);
   for (int i = 0; i < numRows; ++i)
   {
-    float zPos = -halfH + patchH * i;
+    float zPos = -halfH + patchSize * i;
     for (int j = 0; j < numCols; ++j)
     {
-      float xPos = -halfW + patchW * j;
+      float xPos = -halfW + patchSize * j;
 
       Vertex newVert;
       newVert.uv = vec2(j * deltaU, i * deltaV);
@@ -136,7 +168,6 @@ void TerrainGeneration::CreatePatchVAO(vec2 heightmapDimensions)
   Vao::BufferVec buffers{ vertexBuffer };
   auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers, 
     ib, Falcor::ResourceFormat::R32Uint);
-  //auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
   //Set it into graphics state
   mpState->setVao(vao);
 }
@@ -177,9 +208,10 @@ Buffer::SharedPtr TerrainGeneration::CreatePatchIndexBuffer(int numRows, int num
 void TerrainGeneration::UpdateVars()
 {
   vec3 camPos = mpCamera->getPosition();
-  glm::mat4 viewProj = mpCamera->getViewProjMatrix();
-  mpVars->getConstantBuffer("HSPerFrame")->setBlob(&camPos, 0, sizeof(glm::vec3));
+  mHsPerFrame.eyePos = camPos;
+  mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
+  mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
+  mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&camPos, 0, sizeof(glm::vec3));
-  mpVars->getConstantBuffer("DSPerFrame")->setBlob(&viewProj, 0, sizeof(glm::mat4));
   mpVars->setTexture("gHeightmap", mpHeightmap);
 }

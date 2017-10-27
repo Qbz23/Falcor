@@ -16,16 +16,43 @@ class TerrainGeneration : public EffectSample
     void onShutdown() override;
 
   private:
+    const int kInitialNumRows = 32;
+    const int kMaxRows = 256;
+    const int kInitialNumCols = 32;
+    const int kMaxCols = 256;
+    const float kInitialPatchW = 4.0f;
+    const float kMinPatchW = 0.1f;
+    const float kInitialCameraSpeed = 5.0f;
+
     struct Vertex
     {
       vec4 pos;
       vec2 uv;
     };
 
-    void CreatePatch(vec2 heightmapDimensions);
+    struct DsPerFrame
+    {
+      glm::mat4 viewProj;
+      float maxHeight = 10.0f;
+    } mDsPerFrame;
+    const float kMinHeight = 0.1f;
+
+    struct HsPerFrame
+    {
+      vec3 eyePos;
+      float minDistance = 0.01f;
+      float maxDistance = 350.0f;
+      int minTessFactor = 4;
+      int maxTessFactor = 64;
+    } mHsPerFrame;
+    const float kSmallestMinDistance = 0.001f;
+    const float kSmallestMaxDistance = 0.01f;
+    const int kSmallestTessFactor = 2;
+    const int kLargestTessFactor = 64;
+
     //Creates Patch VAO and sets it in to gfx state
-    void CreatePatchVAO(vec2 heightmapDimensions);
-    //Create patch index buffer
+    void TerrainGeneration::CreatePatchVao(int numRows, int numCols, float patchSize);
+      //Create patch index buffer
     Buffer::SharedPtr CreatePatchIndexBuffer(int numRows, int numColumns);
 
     GraphicsState::SharedPtr mpState;
@@ -38,4 +65,7 @@ class TerrainGeneration : public EffectSample
     uint32_t mIndexCount;
 
     Texture::SharedPtr mpHeightmap;
+    //Maybe generalize out to a util? some effects samples use similar code like this
+    RasterizerState::SharedPtr mpWireframeRs;
+    RasterizerState::SharedPtr mpDefaultRs;
 };

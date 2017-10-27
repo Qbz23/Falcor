@@ -1,5 +1,3 @@
-//RN just copies of tessellation intro shaders
-
 static const float3 colors[6] = {
   float3(0.1f, 0.1f, 1.0f),
   float3(0.37f, 0.94f, 0.0f),
@@ -11,6 +9,7 @@ static const float3 colors[6] = {
 
 float3 GetColorFromHeight(float height)
 {
+  //TODO this should be based on max height which is passed to ds
   //[0, 50]
   height += 1;
   height /= 10; // 5 color intervals of 10 each
