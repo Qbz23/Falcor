@@ -146,6 +146,12 @@ void TerrainGeneration::onShutdown()
   //Not 100% sure why I need to do this. Maybe b/c of the 
   //subproject effect sample setup? But if i dont do this,
   //there are live objects on exit
+  mpWireframeRs.reset();
+  mpDefaultRs.reset();
+
+  for (auto i = 0; i < kNumHeightmaps; ++i)
+    mHeightmaps[i].reset();
+
   mpVars.reset();
   mpState.reset();
 }
