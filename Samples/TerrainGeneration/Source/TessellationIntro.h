@@ -6,7 +6,8 @@ using namespace Falcor;
 
 class TessellationIntro : public EffectSample
 {
-  public: 
+public:
+    TessellationIntro(ProjectUtils* pu) : EffectSample(pu) {}
     void onLoad(const Fbo::SharedPtr& pDefaultFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;

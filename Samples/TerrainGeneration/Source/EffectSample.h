@@ -1,5 +1,6 @@
 #pragma once
 #include "Falcor.h"
+#include "ProjectUtils.h"
 
 using namespace Falcor;
 
@@ -10,6 +11,8 @@ class EffectSample
   public:
     using UniquePtr = std::unique_ptr<EffectSample>;
 
+    EffectSample(ProjectUtils* pu) : mpUtils(pu) {}
+    virtual ~EffectSample() {};
     virtual void onLoad(const Fbo::SharedPtr& pFbo) {}
     virtual void preFrameRender(RenderContext::SharedPtr pCtx) {}
     virtual void onFrameRender(RenderContext::SharedPtr pCtx) {}
@@ -18,4 +21,8 @@ class EffectSample
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) { return false; }
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) { return false; }
     virtual void onResizeSwapChain() {}
+
+  protected:
+    ProjectUtils* mpUtils;
+
 };

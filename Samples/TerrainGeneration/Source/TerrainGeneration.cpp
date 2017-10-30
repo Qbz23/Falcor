@@ -27,29 +27,18 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mCamController.attachCamera(mpCamera);
   mCamController.setCameraSpeed(kInitialCameraSpeed);
 
-  auto rsDesc = RasterizerState::Desc();
-  mpDefaultRs = RasterizerState::create(rsDesc);
-  rsDesc.setFillMode(RasterizerState::FillMode::Wireframe);
-  mpWireframeRs = RasterizerState::create(rsDesc);
-
+  //Set state properties
   mpState = GraphicsState::create();
-  mpState->setProgram(program);
-  
+  mpState->setProgram(program);  
   mpState->setFbo(pDefaultFbo);
-  CreatePatchVao(kInitialNumRows, kInitialNumCols, kInitialPatchW);
-  LoadHeightmaps();
 
-  //Trilinear Wrap Sampler
-  Sampler::Desc samplerDesc;
-  samplerDesc.setFilterMode(
-    Sampler::Filter::Linear,
-    Sampler::Filter::Linear,
-    Sampler::Filter::Linear);
-  samplerDesc.setAddressingMode(
-    Sampler::AddressMode::Clamp,
-    Sampler::AddressMode::Clamp,
-    Sampler::AddressMode::Clamp);
-  mpVars->setSampler("gSampler", Sampler::create(samplerDesc));
+  //Get vao
+  auto vaoPair = mpUtils->GetGridPatchVao(kInitialNumRows, kInitialNumCols, kInitialPatchW);
+  mpState->setVao(vaoPair.first);
+  mIndexCount = vaoPair.second;  LoadHeightmaps();
+
+  //Get Sampler
+  mpVars->setSampler("gSampler", mpUtils->GetTrilienarClampSampler());
 }
 
 void TerrainGeneration::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -81,9 +70,9 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
     if (mpGui->addCheckBox("Wireframe", isWireframe))
     {
       if (isWireframe)
-        mpState->setRasterizerState(mpWireframeRs);
+        mpState->setRasterizerState(mpUtils->GetWireframeRS());
       else
-        mpState->setRasterizerState(mpDefaultRs);
+       mpState->setRasterizerState(nullptr); //nullptr is default
     }
 
     if (mpGui->beginGroup("Patch Geometry"))
@@ -100,7 +89,9 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
       if (mpGui->addButton("Re-generate Patches"))
       {
         mpState->setVao(nullptr);
-        CreatePatchVao(numRows, numColumns, patchWidth);
+        auto vaoPair = mpUtils->GetGridPatchVao(numRows, numColumns, patchWidth);
+        mpState->setVao(vaoPair.first);
+        mIndexCount = vaoPair.second;
       }
       mpGui->endGroup();
     }
@@ -133,6 +124,7 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
 
 bool TerrainGeneration::onKeyEvent(const KeyboardEvent& keyEvent)
 {
+  //Todo, on R, reset camera, on right/left, change map, on up/down, change height
   return mCamController.onKeyEvent(keyEvent);
 }
 
@@ -143,97 +135,18 @@ bool TerrainGeneration::onMouseEvent(const MouseEvent& mouseEvent)
 
 void TerrainGeneration::onShutdown()
 {
+  //TODO CHECK. Shit I think I just need a virtual dtor to not 
+  //need to do this. Derived dtor never being called and releasing 
+  //references to shared ptrs
+
   //Not 100% sure why I need to do this. Maybe b/c of the 
   //subproject effect sample setup? But if i dont do this,
   //there are live objects on exit
-  mpWireframeRs.reset();
-  mpDefaultRs.reset();
-
   for (auto i = 0; i < kNumHeightmaps; ++i)
     mHeightmaps[i].reset();
 
   mpVars.reset();
   mpState.reset();
-}
-
-void TerrainGeneration::CreatePatchVao(int numRows, int numCols, float patchSize)
-{
-  const float halfW = (numCols * patchSize) / 2.0f;
-  const float halfH = (numRows * patchSize) / 2.0f;
-  const float deltaU = 1.0f / (numCols - 1);
-  const float deltaV = 1.0f / (numRows - 1);
-
-  std::vector<Vertex> verts;
-  verts.resize(numRows * numCols);
-  for (int i = 0; i < numRows; ++i)
-  {
-    float zPos = -halfH + patchSize * i;
-    for (int j = 0; j < numCols; ++j)
-    {
-      float xPos = -halfW + patchSize * j;
-
-      Vertex newVert;
-      newVert.uv = vec2(j * deltaU, i * deltaV);
-      newVert.pos = vec4(xPos, 0, zPos, 1.0f);
-
-      verts[numCols * i + j] = newVert;
-    }
-  }
-
-  //Get IB
-  auto ib = CreatePatchIndexBuffer(numRows, numCols);
-
-  //create VB
-  const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*verts.size());
-  auto vertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex,
-    Buffer::CpuAccess::Write, (void*)verts.data());
-
-  //create input layout
-  VertexLayout::SharedPtr pLayout = VertexLayout::create();
-  VertexBufferLayout::SharedPtr pBufLayout = VertexBufferLayout::create();
-  pBufLayout->addElement("POSITION", 0, ResourceFormat::RGBA32Float, 1, 0);
-  pBufLayout->addElement("TEXCOORD", 16, ResourceFormat::RG32Float, 1, 1);
-  pLayout->addBufferLayout(0, pBufLayout);
-
-  //create vao
-  Vao::BufferVec buffers{ vertexBuffer };
-  auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers, 
-    ib, Falcor::ResourceFormat::R32Uint);
-  //Set it into graphics state
-  mpState->setVao(vao);
-}
-
-Buffer::SharedPtr TerrainGeneration::CreatePatchIndexBuffer(int numRows, int numCols)
-{
-  int numFaces = (numRows - 1) * (numCols - 1);
-  std::vector<uint32_t> indices;
-  mIndexCount = 4 * numFaces;
-  indices.resize(mIndexCount);
-
-  //index buffer index
-  int k = 0;
-  for (int i = 0; i < numRows - 1; ++i)
-  {
-    for (int j = 0; j < numCols - 1; ++j)
-    {
-      //top left
-      indices[k] = i * numCols + j;
-      //top right
-      indices[k + 1] = indices[k] + 1;
-      //bot right
-      indices[k + 3] = (i + 1) * numCols + j + 1;
-      //bot left
-      indices[k + 2] = (i + 1) * numCols + j;
-
-      k += 4;
-    }
-  }
-
-  return Buffer::create(
-    mIndexCount * sizeof(uint32_t),
-    Buffer::BindFlags::Index,
-    Buffer::CpuAccess::None,
-    indices.data());
 }
 
 void TerrainGeneration::UpdateVars()

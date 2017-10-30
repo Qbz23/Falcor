@@ -1,4 +1,7 @@
-
+cbuffer VsPerFrame
+{
+  matrix rotation;
+};
 
 struct VS_IN
 {
@@ -15,8 +18,7 @@ struct VS_OUT
 VS_OUT main(VS_IN vIn)
 {
 	VS_OUT output;
-  output.pos = vIn.pos;
-	//output.pos = mul(vIn.pos, viewProj);
+  output.pos = mul(vIn.pos, rotation);
   output.tex = vIn.tex;
 	return output;
 }

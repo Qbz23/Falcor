@@ -62,13 +62,6 @@ void DisplacementMapping::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpSceneRenderer = SceneRenderer::create(mpScene);
   mCamController.attachCamera(mpScene->getActiveCamera());
 
-  //Rasterizer State
-  mpDefaultRS = RasterizerState::create(RasterizerState::Desc());
-	RasterizerState::Desc wireframeDesc;
-	wireframeDesc.setFillMode(RasterizerState::FillMode::Wireframe);
-	wireframeDesc.setCullMode(RasterizerState::CullMode::None);
-	mpWireframeRS = RasterizerState::create(wireframeDesc);
-
   //Shader
   Program::DefineList defines;
   defines.add("DIFFUSE");
@@ -87,16 +80,7 @@ void DisplacementMapping::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpState->setProgram(program);
 
   //Sampler
-  Sampler::Desc samplerDesc;
-  samplerDesc.setFilterMode(
-    Sampler::Filter::Linear, 
-    Sampler::Filter::Linear, 
-    Sampler::Filter::Linear);
-  samplerDesc.setAddressingMode(
-    Sampler::AddressMode::Wrap, 
-    Sampler::AddressMode::Wrap, 
-    Sampler::AddressMode::Wrap);
-  mpVars->setSampler("gSampler", Sampler::create(samplerDesc));
+  mpVars->setSampler("gSampler", mpUtils->GetTrilinearWrapSampler());
 }
 
 void DisplacementMapping::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -150,11 +134,11 @@ void DisplacementMapping::onGuiRender(Gui* mpGui)
       //sets it in graphics state whenever it changes 
       if (usingWireframeRS)
       {
-        mpState->setRasterizerState(mpWireframeRS);
+        mpState->setRasterizerState(mpUtils->GetWireframeRS());
       }
       else
       {
-        mpState->setRasterizerState(mpDefaultRS);
+        mpState->setRasterizerState(nullptr); //nullptr sets to default
       }
     }
 
@@ -275,6 +259,13 @@ bool DisplacementMapping::onKeyEvent(const KeyboardEvent& keyEvent)
       }
     }
   }
+
+  //Dont move tess factors below 1 or above 64
+  mHullPerFrame.edgeFactors = max(mHullPerFrame.edgeFactors, vec3(1, 1, 1));
+  mHullPerFrame.edgeFactors = min(mHullPerFrame.edgeFactors, vec3(64, 64, 64));
+  mHullPerFrame.insideFactor = max(mHullPerFrame.insideFactor, 1.0f);
+  mHullPerFrame.insideFactor = min(mHullPerFrame.insideFactor, 64.0f);
+
   return handled;
 }
 
@@ -317,9 +308,8 @@ void DisplacementMapping::onShutdown()
 {
   //Really not sure why i need to do this to have no live objects
   //shouldnt shared ptrs be releasing when this dtors?
-  mpDefaultRS.reset();
-  mpWireframeRS.reset();
 
+  //Todo if check virtual dtor fixes
   for (int i = 0; i < kNumTextures; ++i)
   {
     mDiffuseMaps[i].reset();

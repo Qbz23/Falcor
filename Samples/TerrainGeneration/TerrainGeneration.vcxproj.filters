@@ -73,6 +73,7 @@
     <ClCompile Include="Source\DisplacementMapping.cpp" />
     <ClCompile Include="Source\InteractivePlane.cpp" />
     <ClCompile Include="Source\TerrainGeneration.cpp" />
+    <ClCompile Include="Source\ProjectUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\TessellationIntro.h" />
@@ -81,5 +82,6 @@
     <ClInclude Include="Source\DisplacementMapping.h" />
     <ClInclude Include="Source\InteractivePlane.h" />
     <ClInclude Include="Source\TerrainGeneration.h" />
+    <ClInclude Include="Source\ProjectUtils.h" />
   </ItemGroup>
 </Project>

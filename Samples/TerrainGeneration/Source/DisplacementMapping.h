@@ -8,6 +8,7 @@ using ModelIstnace = ObjectInstance<Model>;
 class DisplacementMapping : public EffectSample
 {
 public:
+    DisplacementMapping(ProjectUtils* pu) : EffectSample(pu) {}
     void onLoad(const Fbo::SharedPtr& pFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
@@ -75,8 +76,6 @@ public:
 
     //Rasterizer State
     bool usingWireframeRS = false;
-    RasterizerState::SharedPtr mpDefaultRS;
-    RasterizerState::SharedPtr mpWireframeRS;
 
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;

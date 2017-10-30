@@ -23,4 +23,5 @@ private:
   EffectSample::UniquePtr effects[Mode::Count];
 
 	vec4 mClearColor = vec4(0.0f, 0.35f, 0.35f, 1.0f);
+  ProjectUtils mProjectUtils;
 };

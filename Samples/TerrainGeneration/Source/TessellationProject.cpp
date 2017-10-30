@@ -28,11 +28,16 @@ void TessellationProject::onGuiRender()
 
 void TessellationProject::onLoad()
 {
+  mProjectUtils.onLoad();
   //Needs to be ptr so it calls derived class functions
-  effects[Mode::Intro] = std::make_unique<TessellationIntro>(TessellationIntro());
-  effects[Mode::Displacement] = std::make_unique<DisplacementMapping>(DisplacementMapping());
-  effects[Mode::DynamicPlane] = std::make_unique<InteractivePlane>(InteractivePlane());
-  effects[Mode::Terrain] = std::make_unique<TerrainGeneration>(TerrainGeneration());
+  effects[Mode::Intro] = 
+    std::make_unique<TessellationIntro>(TessellationIntro(&mProjectUtils));
+  effects[Mode::Displacement] = 
+    std::make_unique<DisplacementMapping>(DisplacementMapping(&mProjectUtils));
+  effects[Mode::DynamicPlane] = 
+    std::make_unique<InteractivePlane>(InteractivePlane(&mProjectUtils));
+  effects[Mode::Terrain] = 
+    std::make_unique<TerrainGeneration>(TerrainGeneration(&mProjectUtils));
 
   for(uint32_t i = 0; i <Mode::Count; ++i)
   {

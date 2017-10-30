@@ -7,6 +7,7 @@ using namespace Falcor;
 class TerrainGeneration : public EffectSample
 {
   public: 
+    TerrainGeneration(ProjectUtils* pu) : EffectSample(pu) {}
     void onLoad(const Fbo::SharedPtr& pDefaultFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
@@ -23,12 +24,6 @@ class TerrainGeneration : public EffectSample
     const float kInitialPatchW = 4.0f;
     const float kMinPatchW = 0.1f;
     const float kInitialCameraSpeed = 5.0f;
-
-    struct Vertex
-    {
-      vec4 pos;
-      vec2 uv;
-    };
 
     struct HsPerFrame
     {
@@ -58,11 +53,6 @@ class TerrainGeneration : public EffectSample
       float heightColorOffset = 0.0f;
     } mPsPerFrame;
 
-    //Creates Patch VAO and sets it in to gfx state
-    void TerrainGeneration::CreatePatchVao(int numRows, int numCols, float patchSize);
-      //Create patch index buffer
-    Buffer::SharedPtr CreatePatchIndexBuffer(int numRows, int numColumns);
-
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;
 
@@ -71,10 +61,6 @@ class TerrainGeneration : public EffectSample
 
     void UpdateVars();
     uint32_t mIndexCount;
-
-    //Maybe generalize out to a util? some effects samples use similar code like this
-    RasterizerState::SharedPtr mpWireframeRs;
-    RasterizerState::SharedPtr mpDefaultRs;
 
     //Textures
     static const Gui::DropdownList kHeightmapDropdown;

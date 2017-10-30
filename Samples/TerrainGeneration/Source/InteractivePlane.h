@@ -7,6 +7,7 @@ using namespace Falcor;
 class InteractivePlane : public EffectSample
 {
   public: 
+    InteractivePlane(ProjectUtils* pu) : EffectSample(pu) {}
     void onLoad(const Fbo::SharedPtr& pDefaultFbo) override;
     void preFrameRender(RenderContext::SharedPtr pCtx) override;
     void onFrameRender(RenderContext::SharedPtr pCtx) override;
@@ -46,8 +47,6 @@ class InteractivePlane : public EffectSample
 
     void RenderHeightChange(RenderContext::SharedPtr pCtx);
 
-    //Loads plane obj and sets it into the scene
-    void CreatePlane();
     //returns tex coords of point of click on object
     float2 ClickRayPlane(float2 mouseCoords);
 

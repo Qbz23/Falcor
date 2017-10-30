@@ -10,17 +10,11 @@ void TessellationIntro::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     appendShaderExtension("TessellationIntro.ds"));
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
-  //Rasterizer State
-  RasterizerState::Desc wireframeDesc;
-  wireframeDesc.setFillMode(RasterizerState::FillMode::Wireframe);
-  wireframeDesc.setCullMode(RasterizerState::CullMode::None);
-  auto wireframeRS = RasterizerState::create(wireframeDesc);
-
   mpState = GraphicsState::create();
   mpState->setFbo(pDefaultFbo);
   mpState->setProgram(program);
-  mpState->setRasterizerState(wireframeRS);
-  CreateQuad();
+  mpState->setRasterizerState(mpUtils->GetWireframeRS());
+  mpState->setVao(mpUtils->GetUnitQuadPatchVao());
 }
 
 void TessellationIntro::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -70,38 +64,12 @@ bool TessellationIntro::onKeyEvent(const KeyboardEvent& keyEvent)
     return false;
   }
 
+  //Dont move tess factors below 1 or above 64
+  mHullPerFrame.edgeFactors = max(mHullPerFrame.edgeFactors, vec4(1, 1, 1, 1));
+  mHullPerFrame.edgeFactors = min(mHullPerFrame.edgeFactors, vec4(64, 64, 64, 64));
+  mHullPerFrame.insideFactors = max(mHullPerFrame.insideFactors, vec2(1, 1));
+  mHullPerFrame.insideFactors = min(mHullPerFrame.insideFactors, vec2(64, 64));
   return true;
-}
-
-void TessellationIntro::CreateQuad()
-{
-  //Just in NDC. Not doing any transformation
-  const Vertex kQuadVertices[] =
-  {	//Only work for DX. See FullScreenPass.cpp line 60
-    //for macro so that it also works with vulkan
-    { glm::vec2(-1, 1), glm::vec2(0, 0) },
-    { glm::vec2(-1, -1), glm::vec2(0, 1) },
-    { glm::vec2(1, 1), glm::vec2(1, 0) },
-    { glm::vec2(1, -1), glm::vec2(1, 1) },
-  };
-
-  //create VB
-  const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(kQuadVertices));
-  auto vertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex,
-    Buffer::CpuAccess::Write, (void*)kQuadVertices);
-
-  //create input layout
-  VertexLayout::SharedPtr pLayout = VertexLayout::create();
-  VertexBufferLayout::SharedPtr pBufLayout = VertexBufferLayout::create();
-  pBufLayout->addElement("POSITION", 0, ResourceFormat::RG32Float, 1, 0);
-  pBufLayout->addElement("TEXCOORD", 8, ResourceFormat::RG32Float, 1, 1);
-  pLayout->addBufferLayout(0, pBufLayout);
-
-  //create vao
-  Vao::BufferVec buffers{ vertexBuffer };
-  auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
-  //Set it into graphics state
-  mpState->setVao(vao);
 }
 
 void TessellationIntro::UpdateVars()

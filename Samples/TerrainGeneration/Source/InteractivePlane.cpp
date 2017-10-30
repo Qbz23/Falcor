@@ -17,7 +17,13 @@ void InteractivePlane::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpState->setFbo(pDefaultFbo);
   mpState->setProgram(program);
 
-  CreatePlane();
+  //Grab plane vao and add rotation so its XZ rather than XY
+  mpState->setVao(mpUtils->GetUnitQuadPatchVao());
+  auto vsPerFrame = mpVars->getConstantBuffer("VsPerFrame");
+  glm::mat4 identity = glm::mat4();
+  glm::mat4 rot = glm::rotate(identity, -3.1415f / 2.0f, glm::vec3(1, 0, 0));
+  rot = glm::rotate(rot, 3.1415f / 2.0f, glm::vec3(0, 0, 1));
+  vsPerFrame->setBlob(&rot, 0, sizeof(glm::mat4));
 
   //Stuff for heightmap pass
   mpHeightmap = Texture::create2D(
@@ -39,16 +45,9 @@ void InteractivePlane::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mHeightmapPass.mpFbo->attachColorTarget(mpHeightmap, 0);
   mHeightmapPass.mpState->setFbo(mHeightmapPass.mpFbo);
 
-  //Clamp sampler
-  Sampler::Desc samplerDesc = Sampler::Desc();
-  samplerDesc.setAddressingMode(
-    Sampler::AddressMode::Clamp,
-    Sampler::AddressMode::Clamp,
-    Sampler::AddressMode::Clamp);
-  auto sampler = Sampler::create(samplerDesc);
-
-  mHeightmapPass.mpVars->setSampler("gSampler", sampler);
-  mpVars->setSampler("gSampler", sampler);
+  auto trilinearClampSampler = mpUtils->GetTrilienarClampSampler();
+  mHeightmapPass.mpVars->setSampler("gSampler", trilinearClampSampler);
+  mpVars->setSampler("gSampler", trilinearClampSampler);
 }
 
 void InteractivePlane::RenderHeightChange(RenderContext::SharedPtr pCtx)
@@ -193,36 +192,6 @@ float2 InteractivePlane::ClickRayPlane(float2 mouseCoords)
   hitPos += float3(1.0f, 0.0f, -1.0f);
   hitPos /= float3(2.0f, 1.0f, -2.0f);
   return float2(hitPos.x, hitPos.z);
-}
-
-void InteractivePlane::CreatePlane()
-{
-  const Vertex kPlaneVertices[] =
-  {
-    { glm::vec4(-1.0f, 0.f, 1.0f, 1.0f), glm::vec2(0, 0) },
-    { glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), glm::vec2(1, 0) },
-    { glm::vec4(-1.0f, 0.f, -1.0f, 1.0f), glm::vec2(0, 1) },
-    { glm::vec4(1.0f, 0.0f, -1.0f, 1.0f), glm::vec2(1, 1) },
-  };
-
-  //create VB
-  const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*arraysize(kPlaneVertices));
-  auto vertexBuffer = Buffer::create(vbSize, Buffer::BindFlags::Vertex,
-    Buffer::CpuAccess::Write, (void*)kPlaneVertices);
-
-  //create input layout
-  VertexLayout::SharedPtr pLayout = VertexLayout::create();
-  VertexBufferLayout::SharedPtr pBufLayout = VertexBufferLayout::create();
-  pBufLayout->addElement("POSITION", 0, ResourceFormat::RGBA32Float, 1, 0);
-  pBufLayout->addElement("TEXCOORD", 16, ResourceFormat::RG32Float, 1, 1);
-  pLayout->addBufferLayout(0, pBufLayout);
-
-  //create vao
-  Vao::BufferVec buffers{ vertexBuffer };
-  //Change this to patch4 for tess
-  auto vao = Vao::create(Vao::Topology::Patch4, pLayout, buffers);
-  //Set it into graphics state
-  mpState->setVao(vao);
 }
 
 void InteractivePlane::UpdateVars()
