@@ -193,6 +193,7 @@
     <ClCompile Include="Source\TerrainGeneration.cpp" />
     <ClCompile Include="Source\TessellationIntro.cpp" />
     <ClCompile Include="Source\TessellationProject.cpp" />
+    <ClCompile Include="Source\WaterSimulation.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\DisplacementMapping.h" />
@@ -202,6 +203,7 @@
     <ClInclude Include="Source\TerrainGeneration.h" />
     <ClInclude Include="Source\TessellationIntro.h" />
     <ClInclude Include="Source\TessellationProject.h" />
+    <ClInclude Include="Source\WaterSimulation.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

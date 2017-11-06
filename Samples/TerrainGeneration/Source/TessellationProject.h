@@ -17,7 +17,7 @@ public:
 
 private:
   enum Mode { Intro = 0, Displacement = 1, DynamicPlane = 2, Terrain = 3, 
-              Count = 4 };
+              Water = 4, Count = 5 };
   static const Gui::DropdownList kModeDropdown;
   Mode mMode = Terrain;
   EffectSample::UniquePtr effects[Mode::Count];

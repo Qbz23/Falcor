@@ -3,13 +3,15 @@
 #include "DisplacementMapping.h"
 #include "InteractivePlane.h"
 #include "TerrainGeneration.h"
+#include "WaterSimulation.h"
 
 const Gui::DropdownList TessellationProject::kModeDropdown
 {
   { (int32_t)Mode::Intro, "Intro to Tessellation" },
   { (int32_t)Mode::Displacement, "Displacement Mapping" },
   { (int32_t)Mode::DynamicPlane, "Interactive Plane" },
-  { (int32_t)Mode::Terrain, "Terrain Generation" }
+  { (int32_t)Mode::Terrain, "Terrain Generation" },
+  { (int32_t)Mode::Water, "Water Simulation"}
 };
 
 void TessellationProject::onGuiRender()
@@ -38,6 +40,8 @@ void TessellationProject::onLoad()
     std::make_unique<InteractivePlane>(InteractivePlane(&mProjectUtils));
   effects[Mode::Terrain] = 
     std::make_unique<TerrainGeneration>(TerrainGeneration(&mProjectUtils));
+  effects[Mode::Water] = 
+    std::make_unique<WaterSimulation>(WaterSimulation(&mProjectUtils));
 
   for(uint32_t i = 0; i <Mode::Count; ++i)
   {
