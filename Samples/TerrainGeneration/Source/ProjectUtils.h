@@ -17,6 +17,7 @@ public:
   //Pair of vao and index count
   //Actually creates instead of returning already created b/c varies due to params
   std::pair<Vao::SharedPtr, uint32_t> GetGridPatchVao(int numRows, int numCols, float patchSize);
+  std::pair<Vao::SharedPtr, uint32_t> GridPatchVaoGui(Gui* pGui, int& numRows, int& numCols, float& patchW);
 
 private:
   struct PatchVertex

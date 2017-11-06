@@ -140,3 +140,22 @@ Vao::SharedPtr ProjectUtils::CreateUnitQuadPatchVao()
   Vao::BufferVec buffers{ vertexBuffer };
   return Vao::create(Vao::Topology::Patch4, pLayout, buffers);
 }
+
+std::pair<Vao::SharedPtr, uint32_t> ProjectUtils::GridPatchVaoGui(Gui* pGui, int& numRows, int& numCols, float& patchW)
+{
+  static const int kMaxRows = 256;
+  static const float kMinPatchW = 0.1f;
+
+  pGui->addIntVar("Num Rows", numRows, 1, kMaxRows);
+  pGui->addIntVar("Num Cols", numCols, 1, kMaxRows);
+  pGui->addFloatVar("Patch Wdith", patchW, kMinPatchW);
+
+  if (pGui->addButton("Re-generate Patches"))
+  {
+    auto vaoPair = GetGridPatchVao(numRows, numCols, patchW);
+    return vaoPair;
+  }
+  else
+    return std::make_pair(nullptr, 0);
+
+}

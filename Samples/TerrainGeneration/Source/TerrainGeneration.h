@@ -18,11 +18,8 @@ class TerrainGeneration : public EffectSample
 
   private:
     const int kInitialNumRows = 32;
-    const int kMaxRows = 256;
     const int kInitialNumCols = 32;
-    const int kMaxCols = 256;
     const float kInitialPatchW = 4.0f;
-    const float kMinPatchW = 0.1f;
     const float kInitialCameraSpeed = 5.0f;
 
     struct HsPerFrame
