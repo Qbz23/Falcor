@@ -24,6 +24,8 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
+  mpCamera->setPosition(mInitialCamPos);
+  mpCamera->setTarget(mInitialCamTarget);
   mCamController.attachCamera(mpCamera);
   mCamController.setCameraSpeed(kInitialCameraSpeed);
 
@@ -124,8 +126,38 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
 
 bool TerrainGeneration::onKeyEvent(const KeyboardEvent& keyEvent)
 {
-  //Todo, on R, reset camera, on right/left, change map, on up/down, change height
-  return mCamController.onKeyEvent(keyEvent);
+  bool handledByCamera = mCamController.onKeyEvent(keyEvent);
+
+  //If key not consumed by camera controller
+  if (!handledByCamera)
+  {
+    if(keyEvent.type == KeyboardEvent::Type::KeyPressed)
+    {
+      switch (keyEvent.key)
+      {
+      case KeyboardEvent::Key::R:
+        mpCamera->setPosition(mInitialCamPos);
+        mpCamera->setTarget(mInitialCamTarget);
+        return true;
+      case KeyboardEvent::Key::Left:
+        mHeightmapIndex = mHeightmapIndex == 0 ? kNumHeightmaps - 1 : mHeightmapIndex - 1;
+        return true;
+      case KeyboardEvent::Key::Right:
+        mHeightmapIndex = (mHeightmapIndex + 1) % kNumHeightmaps;
+        return true;
+      case KeyboardEvent::Key::Down:
+        mDsPerFrame.maxHeight *= 0.9f;
+        return true;
+      case KeyboardEvent::Key::Up:
+        mDsPerFrame.maxHeight *= 1.1f;
+        return true;
+      default:
+        return false;
+      }
+    }
+  }
+  else
+    return true;  return mCamController.onKeyEvent(keyEvent);
 }
 
 bool TerrainGeneration::onMouseEvent(const MouseEvent& mouseEvent)
