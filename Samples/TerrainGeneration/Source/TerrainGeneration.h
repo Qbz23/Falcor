@@ -55,6 +55,8 @@ class TerrainGeneration : public EffectSample
 
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;
+    vec3 mInitialCamPos = vec3(30, 65, 65);
+    vec3 mInitialCamTarget = vec3(-20, 0, -30);
 
     void UpdateVars();
     uint32_t mIndexCount;
@@ -66,5 +68,7 @@ class TerrainGeneration : public EffectSample
     static const std::string mHeightmapNames[kNumHeightmaps];
     void LoadHeightmaps();
     uint32_t mHeightmapIndex = 0;
+    //don't want to fatfinger 
+    bool leftUp = true;
     Texture::SharedPtr mHeightmaps[kNumHeightmaps];
 };
