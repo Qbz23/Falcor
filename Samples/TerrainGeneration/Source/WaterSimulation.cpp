@@ -12,6 +12,8 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
+  mpCamera->setPosition(mInitialCamPos);
+  mpCamera->setTarget(mInitialCamTarget);
   mCamController.attachCamera(mpCamera);
   mCamController.setCameraSpeed(kInitialCameraSpeed);
 
@@ -147,7 +149,36 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
 bool WaterSimulation::onKeyEvent(const KeyboardEvent& keyEvent)
 {
   //Todo, on R, reset camera, on right/left, change map, on up/down, change height
-  return mCamController.onKeyEvent(keyEvent);
+  
+  bool handledByCamera = mCamController.onKeyEvent(keyEvent);
+
+  //If key not consumed by camera controller
+  if(!handledByCamera)
+  {
+    switch(keyEvent.key)
+    {
+      case KeyboardEvent::Key::R:
+        mpCamera->setPosition(mInitialCamPos);
+        mpCamera->setTarget(mInitialCamTarget);
+        return true;
+      case KeyboardEvent::Key::Left:
+        mNoisePass.timeScale *= 0.9f;
+        return true;
+      case KeyboardEvent::Key::Right:
+        mNoisePass.timeScale *= 1.1f;
+        return true;
+      case KeyboardEvent::Key::Down:
+        mNoisePass.psPerFrameData.amplitude *= 0.9f;
+        return true;
+      case KeyboardEvent::Key::Up:
+        mNoisePass.psPerFrameData.amplitude *= 1.1f;
+        return true;
+      default:
+        return false;
+    }
+  }
+  else
+    return true;
 }
 
 bool WaterSimulation::onMouseEvent(const MouseEvent& mouseEvent)
@@ -163,8 +194,10 @@ void WaterSimulation::onShutdown()
   mNoisePass.mpPass.release();
   mNoisePass.mpVars.reset();
   mNoisePass.mpState.reset();
+  mNoisePass.psPerFrame.reset();
+  mNoisePass.mpFbo.reset();
 
-
+  mpNoiseTex.reset();
   mpVars.reset();
   mpState.reset();
 }

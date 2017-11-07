@@ -76,6 +76,8 @@ class WaterSimulation : public EffectSample
 
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;
+    vec3 mInitialCamPos = vec3(0, 30, 0);
+    vec3 mInitialCamTarget = vec3(0, 15, -35);
 
     void UpdateVars();
     uint32_t mIndexCount;
