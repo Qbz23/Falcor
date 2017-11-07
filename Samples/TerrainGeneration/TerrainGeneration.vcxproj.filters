@@ -16,6 +16,9 @@
     <Filter Include="Data\TessellationIntro">
       <UniqueIdentifier>{8ca87525-8981-4b7b-b055-b77525031c8d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Data\Water">
+      <UniqueIdentifier>{e8b90909-ea5c-4e6d-bb4f-c889e7caf570}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Data\Displacement.ds.hlsl">
@@ -67,7 +70,10 @@
       <Filter>Data\TessellationIntro</Filter>
     </FxCompile>
     <FxCompile Include="Data\NoiseWater.ds.hlsl">
-      <Filter>Data</Filter>
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\Noise.ps.hlsl">
+      <Filter>Data\Water</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>

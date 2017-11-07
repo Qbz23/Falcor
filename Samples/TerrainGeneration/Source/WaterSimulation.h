@@ -53,6 +53,25 @@ class WaterSimulation : public EffectSample
       float heightColorOffset = 0.0f;
     } mPsPerFrame;
 
+    struct NoisePsPerFrame
+    {
+      int octaves = 1;
+      float initialFreq = 1;
+      float amplitude = 1;
+      float time = 0;
+    };
+
+    struct NoisePass
+    {
+      FullScreenPass::UniquePtr mpPass;
+      GraphicsVars::SharedPtr mpVars;
+      GraphicsState::SharedPtr mpState;
+      NoisePsPerFrame psPerFrameData;
+      ConstantBuffer::SharedPtr psPerFrame;
+      Fbo::SharedPtr mpFbo;
+    } mNoisePass;
+    void RenderNoiseTex(RenderContext::SharedPtr pCtx);
+
     GraphicsState::SharedPtr mpState;
     GraphicsVars::SharedPtr mpVars;
 

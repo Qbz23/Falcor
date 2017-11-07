@@ -29,29 +29,50 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mpVars->setSampler("gSampler", mpUtils->GetTrilinearWrapSampler());
 
   const int noiseDim = 1024;
-  std::vector<float> noiseData(noiseDim * noiseDim);
 
-    for(int i = 0; i < noiseDim; ++i)
-    {
-      for (int j = 0; j < noiseDim; ++j)
-      {
-          noiseData[noiseDim * i + j] = 
-            mpUtils->PerlinNoise(
-              vec3(
-                (float)i/2.f, 
-                (float)j/2.f, 
-                (float)0.0f), 6, 1.0f); //3d should include over time but i cant generate this every frame
-                //need to reimplement in a compute shader 
-      }
-    } 
+  //Noise pass stuf
+  mNoiseTex = Texture::create2D(
+    noiseDim,
+    noiseDim,
+    ResourceFormat::R32Float, 
+    1u, 
+    Resource::kMaxPossible,
+    nullptr,
+    Resource::BindFlags::ShaderResource | Resource::BindFlags::RenderTarget);
+  mNoiseTex->generateMips();
+  mNoisePass.mpState = GraphicsState::create();
+  mNoisePass.mpPass = FullScreenPass::create(appendShaderExtension("Noise.ps"));
+  mNoisePass.mpVars = GraphicsVars::create(
+    mNoisePass.mpPass->getProgram()->getActiveVersion()->getReflector());
+  mNoisePass.psPerFrame = mNoisePass.mpVars->getConstantBuffer("PsPerFrame");
+  mNoisePass.mpFbo = Fbo::create();
+  mNoisePass.mpFbo->attachColorTarget(mNoiseTex, 0);
+  mNoisePass.mpState->setFbo(mNoisePass.mpFbo);
+}
 
-  mNoiseTex = Texture::create2D(noiseDim, noiseDim, 
-   ResourceFormat::R32Float, 1, Resource::kMaxPossible, noiseData.data());
+void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
+{
+  //Just hardcode as if 60 fps for now
+  mNoisePass.psPerFrameData.time += 0.00016f;
+  //Set Vars
+  mNoisePass.psPerFrame->setBlob(&mNoisePass.psPerFrameData, 0, sizeof(NoisePsPerFrame));
+
+  //Render
+  pCtx->pushGraphicsState(mNoisePass.mpState);
+  pCtx->pushGraphicsVars(mNoisePass.mpVars);
+  mNoisePass.mpPass->execute(pCtx.get());
+  pCtx->popGraphicsVars();
+  pCtx->popGraphicsState();
+
+  //Save result
+  mNoiseTex = mNoisePass.mpFbo->getColorTexture(0);
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
 {
   mCamController.update();
+
+  RenderNoiseTex(pCtx);
 
   UpdateVars();
   pCtx->pushGraphicsState(mpState);
@@ -148,8 +169,6 @@ void WaterSimulation::UpdateVars()
   mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
   mPsPerFrame.eyePos = camPos;
 
-  //Just hardcode as if 60 fps for now
-  mDsPerFrame.time += 0.00016f;
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
