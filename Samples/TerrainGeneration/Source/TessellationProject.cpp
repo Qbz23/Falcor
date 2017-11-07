@@ -52,6 +52,7 @@ void TessellationProject::onLoad()
 void TessellationProject::onFrameRender()
 {
   mpRenderContext->clearFbo(mpDefaultFBO.get(), mClearColor, 1.0f, 0, FboAttachmentType::All);
+  effects[mMode]->updateDt(frameRate().getLastFrameTime());
   effects[mMode]->preFrameRender(mpRenderContext);
 
   //Get around that annoying multiple buffer swapchain d3d12 error 

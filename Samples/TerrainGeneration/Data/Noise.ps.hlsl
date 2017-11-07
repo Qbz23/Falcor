@@ -33,6 +33,7 @@ cbuffer PsPerFrame : register(b0)
   float initialFreq;
   float amplitude;
   float time;
+  int noiseInputScale;
 };
 
 
@@ -102,10 +103,11 @@ float4 main(VS_OUT vOut) : SV_TARGET
   float frequency = initialFreq;
   for(int i = 0; i < octaves; ++i)
   {
-    float3 adjustedInput = float3(10 * vOut.tex, time) * frequency;
-    total += calcNoise(adjustedInput);
+    float3 adjustedInput = float3(noiseInputScale * vOut.tex, time) * frequency;
+    total += calcNoise(adjustedInput) * amplitude;
     frequency *= 2;
   }
+  total /= octaves;
 
   return float4(total, total, total, 1.0f);
 }

@@ -5,7 +5,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 {
   auto program = GraphicsProgram::createFromFile(
     appendShaderExtension("TerrainGeneration.vs"),
-    appendShaderExtension("TerrainGeneration.ps"),
+    appendShaderExtension("NoiseWater.ps"),
     "",
     appendShaderExtension("TerrainGeneration.hs"),
     appendShaderExtension("NoiseWater.ds"));
@@ -31,7 +31,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   const int noiseDim = 1024;
 
   //Noise pass stuf
-  mNoiseTex = Texture::create2D(
+  mpNoiseTex = Texture::create2D(
     noiseDim,
     noiseDim,
     ResourceFormat::R32Float, 
@@ -39,21 +39,20 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     Resource::kMaxPossible,
     nullptr,
     Resource::BindFlags::ShaderResource | Resource::BindFlags::RenderTarget);
-  mNoiseTex->generateMips();
+  mpNoiseTex->generateMips();
   mNoisePass.mpState = GraphicsState::create();
   mNoisePass.mpPass = FullScreenPass::create(appendShaderExtension("Noise.ps"));
   mNoisePass.mpVars = GraphicsVars::create(
     mNoisePass.mpPass->getProgram()->getActiveVersion()->getReflector());
   mNoisePass.psPerFrame = mNoisePass.mpVars->getConstantBuffer("PsPerFrame");
   mNoisePass.mpFbo = Fbo::create();
-  mNoisePass.mpFbo->attachColorTarget(mNoiseTex, 0);
+  mNoisePass.mpFbo->attachColorTarget(mpNoiseTex, 0);
   mNoisePass.mpState->setFbo(mNoisePass.mpFbo);
 }
 
 void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
 {
-  //Just hardcode as if 60 fps for now
-  mNoisePass.psPerFrameData.time += 0.00016f;
+  mNoisePass.psPerFrameData.time += dt * mNoisePass.timeScale;
   //Set Vars
   mNoisePass.psPerFrame->setBlob(&mNoisePass.psPerFrameData, 0, sizeof(NoisePsPerFrame));
 
@@ -65,7 +64,7 @@ void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
   pCtx->popGraphicsState();
 
   //Save result
-  mNoiseTex = mNoisePass.mpFbo->getColorTexture(0);
+  mpNoiseTex = mNoisePass.mpFbo->getColorTexture(0);
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -132,9 +131,13 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
       mpGui->endGroup();
     }
 
-    if (mpGui->beginGroup("Color"))
+    if (mpGui->beginGroup("Noise"))
     {
-      mpGui->addFloatVar("Height Color Offset", mPsPerFrame.heightColorOffset);
+      mpGui->addIntVar("Octaves", mNoisePass.psPerFrameData.octaves, 1);
+      mpGui->addFloatVar("Amplitude", mNoisePass.psPerFrameData.amplitude, 0.001f);
+      mpGui->addFloatVar("Initial Frequency", mNoisePass.psPerFrameData.initialFreq);
+      mpGui->addFloatVar("Time Scale", mNoisePass.timeScale);
+      mpGui->addIntVar("Input Scale", mNoisePass.psPerFrameData.noiseInputScale);
       mpGui->endGroup();
     }
     mpGui->endGroup();
@@ -157,6 +160,10 @@ void WaterSimulation::onShutdown()
   //TODO CHECK. Shit I think I just need a virtual dtor to not 
   //need to do this. Derived dtor never being called and releasing 
   //references to shared ptrs;
+  mNoisePass.mpPass.release();
+  mNoisePass.mpVars.reset();
+  mNoisePass.mpState.reset();
+
 
   mpVars.reset();
   mpState.reset();
@@ -172,5 +179,5 @@ void WaterSimulation::UpdateVars()
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
-  mpVars->setTexture("gNoiseTex", mNoiseTex);
+  mpVars->setTexture("gNoiseTex", mpNoiseTex);
 }

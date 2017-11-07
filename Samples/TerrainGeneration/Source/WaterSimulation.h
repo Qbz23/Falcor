@@ -21,7 +21,7 @@ class WaterSimulation : public EffectSample
     const int kMaxRows = 256;
     const int kInitialNumCols = 32;
     const int kMaxCols = 256;
-    const float kInitialPatchW = 4.0f;
+    const float kInitialPatchW = 16.0f;
     const float kMinPatchW = 0.1f;
     const float kInitialCameraSpeed = 5.0f;
 
@@ -29,8 +29,8 @@ class WaterSimulation : public EffectSample
     {
       vec3 eyePos;
       float minDistance = 0.01f;
-      float maxDistance = 350.0f;
-      int minTessFactor = 4;
+      float maxDistance = 500.0f;
+      int minTessFactor = 64;
       int maxTessFactor = 64;
     } mHsPerFrame;
     const float kSmallestMinDistance = 0.001f;
@@ -48,17 +48,15 @@ class WaterSimulation : public EffectSample
     struct PsPerFrame
     {
       vec3 eyePos;
-      float maxHeight = 10.0f;
-      //Add or subtract first before determining color
-      float heightColorOffset = 0.0f;
     } mPsPerFrame;
 
     struct NoisePsPerFrame
     {
-      int octaves = 1;
+      int octaves = 4;
       float initialFreq = 1;
       float amplitude = 1;
       float time = 0;
+      int noiseInputScale = 10;
     };
 
     struct NoisePass
@@ -69,6 +67,7 @@ class WaterSimulation : public EffectSample
       NoisePsPerFrame psPerFrameData;
       ConstantBuffer::SharedPtr psPerFrame;
       Fbo::SharedPtr mpFbo;
+      float timeScale = 0.1f;
     } mNoisePass;
     void RenderNoiseTex(RenderContext::SharedPtr pCtx);
 
@@ -81,5 +80,5 @@ class WaterSimulation : public EffectSample
     void UpdateVars();
     uint32_t mIndexCount;
 
-    Texture::SharedPtr mNoiseTex;
+    Texture::SharedPtr mpNoiseTex;
 };
