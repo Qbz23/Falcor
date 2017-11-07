@@ -41,7 +41,7 @@ class WaterSimulation : public EffectSample
     struct DsPerFrame
     {
       glm::mat4 viewProj;
-      float maxHeight = 10.0f; //This should be a var
+      float time = 10.0f; //This should be a var
     } mDsPerFrame;
     const float kMinHeight = 0.01f;
 
@@ -61,4 +61,6 @@ class WaterSimulation : public EffectSample
 
     void UpdateVars();
     uint32_t mIndexCount;
+
+    Texture::SharedPtr mNoiseTex;
 };

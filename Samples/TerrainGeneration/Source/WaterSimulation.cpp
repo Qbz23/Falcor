@@ -8,7 +8,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     appendShaderExtension("TerrainGeneration.ps"),
     "",
     appendShaderExtension("TerrainGeneration.hs"),
-    appendShaderExtension("TerrainGeneration.ds"));
+    appendShaderExtension("NoiseWater.ds"));
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
@@ -26,7 +26,27 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mIndexCount = vaoPair.second;
 
   //Get Sampler
-  mpVars->setSampler("gSampler", mpUtils->GetTrilienarClampSampler());
+  mpVars->setSampler("gSampler", mpUtils->GetTrilinearWrapSampler());
+
+  const int noiseDim = 1024;
+  std::vector<float> noiseData(noiseDim * noiseDim);
+
+    for(int i = 0; i < noiseDim; ++i)
+    {
+      for (int j = 0; j < noiseDim; ++j)
+      {
+          noiseData[noiseDim * i + j] = 
+            mpUtils->PerlinNoise(
+              vec3(
+                (float)i/2.f, 
+                (float)j/2.f, 
+                (float)0.0f), 6, 1.0f); //3d should include over time but i cant generate this every frame
+                //need to reimplement in a compute shader 
+      }
+    } 
+
+  mNoiseTex = Texture::create2D(noiseDim, noiseDim, 
+   ResourceFormat::R32Float, 1, Resource::kMaxPossible, noiseData.data());
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -128,7 +148,10 @@ void WaterSimulation::UpdateVars()
   mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
   mPsPerFrame.eyePos = camPos;
 
+  //Just hardcode as if 60 fps for now
+  mDsPerFrame.time += 0.00016f;
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
+  mpVars->setTexture("gNoiseTex", mNoiseTex);
 }
