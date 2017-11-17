@@ -74,6 +74,19 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mHeightResources.mSimulatePass.mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
   mHeightResources.mSimulatePass.mpComputeState = ComputeState::create();
   mHeightResources.mSimulatePass.mpComputeState->setProgram(cs);
+
+  auto heightProgram = GraphicsProgram::createFromFile(
+    appendShaderExtension("TerrainGeneration.vs"),
+    appendShaderExtension("HeightWater.ps"),
+    "",
+    appendShaderExtension("TerrainGeneration.hs"),
+    appendShaderExtension("HeightWater.ds"));
+  mHeightResources.mpVars = GraphicsVars::create(heightProgram->getActiveVersion()->getReflector());
+
+  mHeightResources.mpState = GraphicsState::create();
+  mHeightResources.mpState->setProgram(heightProgram);
+  mHeightResources.mpState->setVao(vaoPair.first);
+
 }
 
 void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
@@ -93,26 +106,41 @@ void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
   mNoiseResources.mpNoiseTex = mNoiseResources.mNoisePass.mpFbo->getColorTexture(0);
 }
 
-void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
+void WaterSimulation::SimulateHeightWater(RenderContext::SharedPtr pCtx)
 {
-  mCamController.update();
-
-  RenderNoiseTex(pCtx);
-
-  //This should go in its own function. Should be structs. 
-  //Maybe a whole new effectsample
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
     "newFlow", mHeightResources.mpFlowTex);
+  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
+    "newHeight", mHeightResources.mpHeightTex);
   pCtx->pushComputeState(mHeightResources.mSimulatePass.mpComputeState);
   pCtx->pushComputeVars(mHeightResources.mSimulatePass.mpComputeVars);
   int numThreadGroups = mHeightResources.kTextureDimensions / mHeightResources.kNumThreadsPerGroup;
   pCtx->dispatch(numThreadGroups, numThreadGroups, 1);
   pCtx->popComputeVars();
   pCtx->popComputeState();
+}
+
+void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
+{
+  mCamController.update();
+
+  if(isInNoiseMode)
+    RenderNoiseTex(pCtx);
+  else 
+     SimulateHeightWater(pCtx);
 
   UpdateVars();
-  pCtx->pushGraphicsState(mNoiseResources.mpState);
-  pCtx->pushGraphicsVars(mNoiseResources.mpVars);
+
+  if (isInNoiseMode)
+  {
+    pCtx->pushGraphicsState(mNoiseResources.mpState);
+    pCtx->pushGraphicsVars(mNoiseResources.mpVars);
+  }
+  else
+  {
+    pCtx->pushGraphicsState(mHeightResources.mpState);
+    pCtx->pushGraphicsVars(mHeightResources.mpVars);
+  }
 }
 
 void WaterSimulation::onFrameRender(RenderContext::SharedPtr pCtx)
@@ -126,6 +154,8 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
 {
   if (mpGui->beginGroup("Water Simulation"))
   {
+    mpGui->addCheckBox("Noise Mode", isInNoiseMode);
+
     static float cameraSpeed = kInitialCameraSpeed;
     if (mpGui->addFloatVar("Camera Speed", cameraSpeed, 0.1f))
     {
@@ -135,9 +165,15 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
     if (mpGui->addCheckBox("Wireframe", isWireframe))
     {
       if (isWireframe)
+      {
         mNoiseResources.mpState->setRasterizerState(mpUtils->GetWireframeRS());
+        mHeightResources.mpState->setRasterizerState(mpUtils->GetWireframeRS());
+      }
       else
+      {
         mNoiseResources.mpState->setRasterizerState(nullptr); //nullptr is default
+        mHeightResources.mpState->setRasterizerState(nullptr);
+      }
     }
 
     if (mpGui->beginGroup("Patch Geometry"))
@@ -154,6 +190,8 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
       {
         mNoiseResources.mpState->setVao(nullptr);
         mNoiseResources.mpState->setVao(vaoPair.first);
+        mHeightResources.mpState->setVao(nullptr);
+        mHeightResources.mpState->setVao(vaoPair.first);
         mIndexCount = vaoPair.second;
       }
       mpGui->endGroup();
@@ -241,11 +279,25 @@ void WaterSimulation::UpdateVars()
 {
   vec3 camPos = mpCamera->getPosition();
   mHsPerFrame.eyePos = camPos;
-  mNoiseResources.mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
-  mNoiseResources.mPsPerFrame.eyePos = camPos;
+  if (isInNoiseMode)
+  {
+    mNoiseResources.mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
+    mNoiseResources.mPsPerFrame.eyePos = camPos;
 
-  mNoiseResources.mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
-  mNoiseResources.mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mNoiseResources.mDsPerFrame, 0, sizeof(NoiseWaterResources::DsPerFrame));
-  mNoiseResources.mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mNoiseResources.mPsPerFrame, 0, sizeof(NoiseWaterResources::PsPerFrame));
-  mNoiseResources.mpVars->setTexture("gNoiseTex", mNoiseResources.mpNoiseTex);
+    mNoiseResources.mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
+    mNoiseResources.mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mNoiseResources.mDsPerFrame, 0, sizeof(NoiseWaterResources::DsPerFrame));
+    mNoiseResources.mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mNoiseResources.mPsPerFrame, 0, sizeof(NoiseWaterResources::PsPerFrame));
+    mNoiseResources.mpVars->setTexture("gNoiseTex", mNoiseResources.mpNoiseTex);
+  }
+  else
+  {
+    mHeightResources.mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
+    mHeightResources.mPsPerFrame.eyePos = camPos;
+
+    mHeightResources.mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
+    mHeightResources.mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mHeightResources.mDsPerFrame, 0, sizeof(HeightWaterResources::DsPerFrame));
+    mHeightResources.mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mHeightResources.mPsPerFrame, 0, sizeof(HeightWaterResources::PsPerFrame));
+    mHeightResources.mpVars->setTexture("gFlowTex", mHeightResources.mpFlowTex);
+    mHeightResources.mpVars->setTexture("gHeightTex", mHeightResources.mpHeightTex);
+  }
 }

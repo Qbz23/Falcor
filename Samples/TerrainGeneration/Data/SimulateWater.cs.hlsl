@@ -9,6 +9,6 @@ void main(int3 groupID: SV_GroupID, int3 threadID : SV_GroupThreadID)
 	int xIndex = 32 * groupID.x + threadID.x;
 	int yIndex = 32 * groupID.y + threadID.y;
 	int2 index = int2(xIndex, yIndex);
-	newHeight[index] = float4(1.0f, 1.0f, 1.0f, 1.0f);
-	newFlow[index] = float4(yIndex / 64.0f, 10, 1, 1);
+	newHeight[index] = float4(3 * saturate(xIndex / 1024.0f), 1.0f, 1.0f, 1.0f);
+	newFlow[index] = float4(xIndex / 64.0f, yIndex / 64.0f, 1, 1);
 }

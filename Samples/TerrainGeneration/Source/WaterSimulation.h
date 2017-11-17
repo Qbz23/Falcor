@@ -82,7 +82,7 @@ class WaterSimulation : public EffectSample
     FirstPersonCameraController mCamController;
     vec3 mInitialCamPos = vec3(0, 30, 0);
     vec3 mInitialCamTarget = vec3(0, 15, -35);
-    bool isInNoiseMode = false;
+    bool isInNoiseMode = true;
 
     void UpdateVars();
     uint32_t mIndexCount;
@@ -100,10 +100,22 @@ class WaterSimulation : public EffectSample
         ComputeState::SharedPtr mpComputeState;
       } mSimulatePass;
 
+      struct DsPerFrame
+      {
+        glm::mat4 viewProj;
+      } mDsPerFrame;
+
+      struct PsPerFrame
+      {
+        vec3 eyePos;
+      } mPsPerFrame;
+
       Texture::SharedPtr mpHeightTex;
       Texture::SharedPtr mpFlowTex;
+      GraphicsVars::SharedPtr mpVars;
+      GraphicsState::SharedPtr mpState;
 
     } mHeightResources;
-
+    void SimulateHeightWater(RenderContext::SharedPtr pCtx);
 
 };
