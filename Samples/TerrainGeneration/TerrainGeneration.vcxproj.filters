@@ -78,6 +78,9 @@
     <FxCompile Include="Data\NoiseWater.ps.hlsl">
       <Filter>Data\Water</Filter>
     </FxCompile>
+    <FxCompile Include="Data\SimulateWater.cs.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\TessellationIntro.cpp" />

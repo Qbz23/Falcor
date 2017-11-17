@@ -50,6 +50,29 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mNoisePass.mpFbo = Fbo::create();
   mNoisePass.mpFbo->attachColorTarget(mpNoiseTex, 0);
   mNoisePass.mpState->setFbo(mNoisePass.mpFbo);
+
+  //Heightfield water stuff
+  mpWaterHeightTex = Texture::create2D(
+	  noiseDim,
+	  noiseDim,
+	  ResourceFormat::R32Float,
+	  1u,
+	  Resource::kMaxPossible,
+	  nullptr,
+	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+  mpWaterFlowTex = Texture::create2D(
+	  noiseDim,
+	  noiseDim,
+	  ResourceFormat::RGBA32Float,
+	  1u,
+	  Resource::kMaxPossible,
+	  nullptr,
+	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+  
+  ComputeProgram::SharedPtr cs = ComputeProgram::createFromFile("SimulateWater.cs.hlsl");
+  mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
+  mpComputeState = ComputeState::create();
+  mpComputeState->setProgram(cs);
 }
 
 void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
@@ -74,6 +97,15 @@ void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
   mCamController.update();
 
   RenderNoiseTex(pCtx);
+
+  //This should go in its own function. Should be structs. 
+  //Maybe a whole new effectsample
+  mpComputeVars->setTexture("newFlow", mpWaterFlowTex);
+  pCtx->pushComputeState(mpComputeState);
+  pCtx->pushComputeVars(mpComputeVars);
+  pCtx->dispatch(1024/32, 1024 / 32, 1);
+  pCtx->popComputeVars();
+  pCtx->popComputeState();
 
   UpdateVars();
   pCtx->pushGraphicsState(mpState);
@@ -212,5 +244,6 @@ void WaterSimulation::UpdateVars()
   mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
-  mpVars->setTexture("gNoiseTex", mpNoiseTex);
+  mpVars->setTexture("gNoiseTex", mpWaterFlowTex);
+
 }

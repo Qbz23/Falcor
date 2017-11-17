@@ -83,4 +83,12 @@ class WaterSimulation : public EffectSample
     uint32_t mIndexCount;
 
     Texture::SharedPtr mpNoiseTex;
+
+	  //=== Heightfield water vvv
+    bool isInNoiseMode = false;
+	  Texture::SharedPtr mpWaterHeightTex;
+	  Texture::SharedPtr mpWaterFlowTex;
+	  ComputeVars::SharedPtr mpComputeVars;
+	  ComputeState::SharedPtr mpComputeState;
+
 };
