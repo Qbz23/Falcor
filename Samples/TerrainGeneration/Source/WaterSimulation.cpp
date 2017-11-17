@@ -9,7 +9,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     "",
     appendShaderExtension("TerrainGeneration.hs"),
     appendShaderExtension("NoiseWater.ds"));
-  mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
+  mNoiseResources.mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
   mpCamera->setPosition(mInitialCamPos);
@@ -18,22 +18,22 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mCamController.setCameraSpeed(kInitialCameraSpeed);
 
   //Set state properties
-  mpState = GraphicsState::create();
-  mpState->setProgram(program);  
-  mpState->setFbo(pDefaultFbo);
+  mNoiseResources.mpState = GraphicsState::create();
+  mNoiseResources.mpState->setProgram(program);
+  mNoiseResources.mpState->setFbo(pDefaultFbo);
 
   //Get vao
   auto vaoPair = mpUtils->GetGridPatchVao(kInitialNumRows, kInitialNumCols, kInitialPatchW);
-  mpState->setVao(vaoPair.first);
+  mNoiseResources.mpState->setVao(vaoPair.first);
   mIndexCount = vaoPair.second;
 
   //Get Sampler
-  mpVars->setSampler("gSampler", mpUtils->GetTrilinearWrapSampler());
+  mNoiseResources.mpVars->setSampler("gSampler", mpUtils->GetTrilinearWrapSampler());
 
   const int noiseDim = 1024;
 
   //Noise pass stuf
-  mpNoiseTex = Texture::create2D(
+  mNoiseResources.mpNoiseTex = Texture::create2D(
     noiseDim,
     noiseDim,
     ResourceFormat::R32Float, 
@@ -41,28 +41,29 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     Resource::kMaxPossible,
     nullptr,
     Resource::BindFlags::ShaderResource | Resource::BindFlags::RenderTarget);
-  mpNoiseTex->generateMips();
-  mNoisePass.mpState = GraphicsState::create();
-  mNoisePass.mpPass = FullScreenPass::create(appendShaderExtension("Noise.ps"));
-  mNoisePass.mpVars = GraphicsVars::create(
-    mNoisePass.mpPass->getProgram()->getActiveVersion()->getReflector());
-  mNoisePass.psPerFrame = mNoisePass.mpVars->getConstantBuffer("PsPerFrame");
-  mNoisePass.mpFbo = Fbo::create();
-  mNoisePass.mpFbo->attachColorTarget(mpNoiseTex, 0);
-  mNoisePass.mpState->setFbo(mNoisePass.mpFbo);
+  mNoiseResources.mpNoiseTex->generateMips();
+  mNoiseResources.mNoisePass.mpState = GraphicsState::create();
+  mNoiseResources.mNoisePass.mpPass = FullScreenPass::create(appendShaderExtension("Noise.ps"));
+  mNoiseResources.mNoisePass.mpVars = GraphicsVars::create(
+    mNoiseResources.mNoisePass.mpPass->getProgram()->getActiveVersion()->getReflector());
+  mNoiseResources.mNoisePass.psPerFrame = 
+    mNoiseResources.mNoisePass.mpVars->getConstantBuffer("PsPerFrame");
+  mNoiseResources.mNoisePass.mpFbo = Fbo::create();
+  mNoiseResources.mNoisePass.mpFbo->attachColorTarget(mNoiseResources.mpNoiseTex, 0);
+  mNoiseResources.mNoisePass.mpState->setFbo(mNoiseResources.mNoisePass.mpFbo);
 
   //Heightfield water stuff
-  mpWaterHeightTex = Texture::create2D(
-	  noiseDim,
-	  noiseDim,
+  mHeightResources.mpHeightTex = Texture::create2D(
+    mHeightResources.kTextureDimensions,
+    mHeightResources.kTextureDimensions,
 	  ResourceFormat::R32Float,
 	  1u,
 	  Resource::kMaxPossible,
 	  nullptr,
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-  mpWaterFlowTex = Texture::create2D(
-	  noiseDim,
-	  noiseDim,
+  mHeightResources.mpFlowTex = Texture::create2D(
+    mHeightResources.kTextureDimensions,
+    mHeightResources.kTextureDimensions,
 	  ResourceFormat::RGBA32Float,
 	  1u,
 	  Resource::kMaxPossible,
@@ -70,26 +71,26 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
   
   ComputeProgram::SharedPtr cs = ComputeProgram::createFromFile("SimulateWater.cs.hlsl");
-  mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
-  mpComputeState = ComputeState::create();
-  mpComputeState->setProgram(cs);
+  mHeightResources.mSimulatePass.mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
+  mHeightResources.mSimulatePass.mpComputeState = ComputeState::create();
+  mHeightResources.mSimulatePass.mpComputeState->setProgram(cs);
 }
 
 void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
 {
-  mNoisePass.psPerFrameData.time += dt * mNoisePass.timeScale;
+  mNoiseResources.mNoisePass.psPerFrameData.time += dt * mNoiseResources.mNoisePass.timeScale;
   //Set Vars
-  mNoisePass.psPerFrame->setBlob(&mNoisePass.psPerFrameData, 0, sizeof(NoisePsPerFrame));
+  mNoiseResources.mNoisePass.psPerFrame->setBlob(&mNoiseResources.mNoisePass.psPerFrameData, 0, sizeof(mNoiseResources.mNoisePass.psPerFrameData));
 
   //Render
-  pCtx->pushGraphicsState(mNoisePass.mpState);
-  pCtx->pushGraphicsVars(mNoisePass.mpVars);
-  mNoisePass.mpPass->execute(pCtx.get());
+  pCtx->pushGraphicsState(mNoiseResources.mNoisePass.mpState);
+  pCtx->pushGraphicsVars(mNoiseResources.mNoisePass.mpVars);
+  mNoiseResources.mNoisePass.mpPass->execute(pCtx.get());
   pCtx->popGraphicsVars();
   pCtx->popGraphicsState();
 
   //Save result
-  mpNoiseTex = mNoisePass.mpFbo->getColorTexture(0);
+  mNoiseResources.mpNoiseTex = mNoiseResources.mNoisePass.mpFbo->getColorTexture(0);
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -100,16 +101,18 @@ void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
 
   //This should go in its own function. Should be structs. 
   //Maybe a whole new effectsample
-  mpComputeVars->setTexture("newFlow", mpWaterFlowTex);
-  pCtx->pushComputeState(mpComputeState);
-  pCtx->pushComputeVars(mpComputeVars);
-  pCtx->dispatch(1024/32, 1024 / 32, 1);
+  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
+    "newFlow", mHeightResources.mpFlowTex);
+  pCtx->pushComputeState(mHeightResources.mSimulatePass.mpComputeState);
+  pCtx->pushComputeVars(mHeightResources.mSimulatePass.mpComputeVars);
+  int numThreadGroups = mHeightResources.kTextureDimensions / mHeightResources.kNumThreadsPerGroup;
+  pCtx->dispatch(numThreadGroups, numThreadGroups, 1);
   pCtx->popComputeVars();
   pCtx->popComputeState();
 
   UpdateVars();
-  pCtx->pushGraphicsState(mpState);
-  pCtx->pushGraphicsVars(mpVars);
+  pCtx->pushGraphicsState(mNoiseResources.mpState);
+  pCtx->pushGraphicsVars(mNoiseResources.mpVars);
 }
 
 void WaterSimulation::onFrameRender(RenderContext::SharedPtr pCtx)
@@ -132,9 +135,9 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
     if (mpGui->addCheckBox("Wireframe", isWireframe))
     {
       if (isWireframe)
-        mpState->setRasterizerState(mpUtils->GetWireframeRS());
+        mNoiseResources.mpState->setRasterizerState(mpUtils->GetWireframeRS());
       else
-        mpState->setRasterizerState(nullptr); //nullptr is default
+        mNoiseResources.mpState->setRasterizerState(nullptr); //nullptr is default
     }
 
     if (mpGui->beginGroup("Patch Geometry"))
@@ -149,8 +152,8 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
 
       if (vaoPair.first != nullptr)
       {
-        mpState->setVao(nullptr);
-        mpState->setVao(vaoPair.first);
+        mNoiseResources.mpState->setVao(nullptr);
+        mNoiseResources.mpState->setVao(vaoPair.first);
         mIndexCount = vaoPair.second;
       }
       mpGui->endGroup();
@@ -167,11 +170,11 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
 
     if (mpGui->beginGroup("Noise"))
     {
-      mpGui->addIntVar("Octaves", mNoisePass.psPerFrameData.octaves, 1);
-      mpGui->addFloatVar("Amplitude", mNoisePass.psPerFrameData.amplitude, 0.001f);
-      mpGui->addFloatVar("Initial Frequency", mNoisePass.psPerFrameData.initialFreq);
-      mpGui->addFloatVar("Time Scale", mNoisePass.timeScale);
-      mpGui->addIntVar("Input Scale", mNoisePass.psPerFrameData.noiseInputScale);
+      mpGui->addIntVar("Octaves", mNoiseResources.mNoisePass.psPerFrameData.octaves, 1);
+      mpGui->addFloatVar("Amplitude", mNoiseResources.mNoisePass.psPerFrameData.amplitude, 0.001f);
+      mpGui->addFloatVar("Initial Frequency", mNoiseResources.mNoisePass.psPerFrameData.initialFreq);
+      mpGui->addFloatVar("Time Scale", mNoiseResources.mNoisePass.timeScale);
+      mpGui->addIntVar("Input Scale", mNoiseResources.mNoisePass.psPerFrameData.noiseInputScale);
       mpGui->endGroup();
     }
     mpGui->endGroup();
@@ -194,16 +197,16 @@ bool WaterSimulation::onKeyEvent(const KeyboardEvent& keyEvent)
         mpCamera->setTarget(mInitialCamTarget);
         return true;
       case KeyboardEvent::Key::Left:
-        mNoisePass.timeScale *= 0.9f;
+        mNoiseResources.mNoisePass.timeScale *= 0.9f;
         return true;
       case KeyboardEvent::Key::Right:
-        mNoisePass.timeScale *= 1.1f;
+        mNoiseResources.mNoisePass.timeScale *= 1.1f;
         return true;
       case KeyboardEvent::Key::Down:
-        mNoisePass.psPerFrameData.amplitude *= 0.9f;
+        mNoiseResources.mNoisePass.psPerFrameData.amplitude *= 0.9f;
         return true;
       case KeyboardEvent::Key::Up:
-        mNoisePass.psPerFrameData.amplitude *= 1.1f;
+        mNoiseResources.mNoisePass.psPerFrameData.amplitude *= 1.1f;
         return true;
       default:
         return false;
@@ -223,27 +226,26 @@ void WaterSimulation::onShutdown()
   //TODO CHECK. Shit I think I just need a virtual dtor to not 
   //need to do this. Derived dtor never being called and releasing 
   //references to shared ptrs;
-  mNoisePass.mpPass.release();
-  mNoisePass.mpVars.reset();
-  mNoisePass.mpState.reset();
-  mNoisePass.psPerFrame.reset();
-  mNoisePass.mpFbo.reset();
+  mNoiseResources.mNoisePass.mpPass.release();
+  mNoiseResources.mNoisePass.mpVars.reset();
+  mNoiseResources.mNoisePass.mpState.reset();
+  mNoiseResources.mNoisePass.psPerFrame.reset();
+  mNoiseResources.mNoisePass.mpFbo.reset();
 
-  mpNoiseTex.reset();
-  mpVars.reset();
-  mpState.reset();
+  mNoiseResources.mpNoiseTex.reset();
+  mNoiseResources.mpVars.reset();
+  mNoiseResources.mpState.reset();
 }
 
 void WaterSimulation::UpdateVars()
 {
   vec3 camPos = mpCamera->getPosition();
   mHsPerFrame.eyePos = camPos;
-  mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
-  mPsPerFrame.eyePos = camPos;
+  mNoiseResources.mDsPerFrame.viewProj = mpCamera->getViewProjMatrix();
+  mNoiseResources.mPsPerFrame.eyePos = camPos;
 
-  mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
-  mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
-  mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
-  mpVars->setTexture("gNoiseTex", mpWaterFlowTex);
-
+  mNoiseResources.mpVars->getConstantBuffer("HSPerFrame")->setBlob(&mHsPerFrame, 0, sizeof(HsPerFrame));
+  mNoiseResources.mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mNoiseResources.mDsPerFrame, 0, sizeof(NoiseWaterResources::DsPerFrame));
+  mNoiseResources.mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mNoiseResources.mPsPerFrame, 0, sizeof(NoiseWaterResources::PsPerFrame));
+  mNoiseResources.mpVars->setTexture("gNoiseTex", mNoiseResources.mpNoiseTex);
 }
