@@ -76,7 +76,7 @@ class WaterSimulation : public EffectSample
       GraphicsVars::SharedPtr mpVars;
       Texture::SharedPtr mpNoiseTex;
     } mNoiseResources;
-    void RenderNoiseTex(RenderContext::SharedPtr pCtx);
+    void RenderNoiseTex(RenderContext::SharedPtr pCtx, Texture::SharedPtr dstTex);
 
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;
@@ -92,6 +92,7 @@ class WaterSimulation : public EffectSample
     {
       static const int kTextureDimensions = 1024;
       static const int kNumThreadsPerGroup = 32;
+      bool generatedFirstHeight = false;
       struct SimulatePass
       {
         Texture::SharedPtr mpPrevHeightTex;

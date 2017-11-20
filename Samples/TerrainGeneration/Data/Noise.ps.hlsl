@@ -107,7 +107,9 @@ float4 main(VS_OUT vOut) : SV_TARGET
     total += calcNoise(adjustedInput) * amplitude;
     frequency *= 2;
   }
-  total /= octaves;
+  //total /= octaves;
+  total /= (octaves * amplitude);
+  total = 0.5f * (total + 1);
 
   return float4(total, total, total, 1.0f);
 }

@@ -53,23 +53,47 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mNoiseResources.mNoisePass.mpState->setFbo(mNoiseResources.mNoisePass.mpFbo);
 
   //Heightfield water stuff
+  //Heightmap
   mHeightResources.mpHeightTex = Texture::create2D(
     mHeightResources.kTextureDimensions,
     mHeightResources.kTextureDimensions,
 	  ResourceFormat::R32Float,
 	  1u,
-	  Resource::kMaxPossible,
+	  1u,
 	  nullptr,
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+  //Flow
   mHeightResources.mpFlowTex = Texture::create2D(
     mHeightResources.kTextureDimensions,
     mHeightResources.kTextureDimensions,
 	  ResourceFormat::RGBA32Float,
 	  1u,
-	  Resource::kMaxPossible,
+	  1u,
 	  nullptr,
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-  
+  //Previous height
+  mHeightResources.mSimulatePass.mpPrevHeightTex = Texture::create2D(
+    mHeightResources.kTextureDimensions,
+    mHeightResources.kTextureDimensions,
+    ResourceFormat::R32Float,
+    1u,
+    1u,
+    nullptr,
+    Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess | Resource::BindFlags::RenderTarget);
+
+  //Initialize zero flow
+  std::vector<vec4> initialFlowData;
+  initialFlowData.resize(
+    mHeightResources.kTextureDimensions * mHeightResources.kTextureDimensions, vec4(0, 0, 0, 0));
+  mHeightResources.mSimulatePass.mpPrevFlowTex = Texture::create2D(
+    mHeightResources.kTextureDimensions,
+    mHeightResources.kTextureDimensions,
+    ResourceFormat::RGBA32Float,
+    1u,
+    1u,
+    initialFlowData.data(),
+    Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess | Resource::BindFlags::RenderTarget);
+  //Previous Flow
   ComputeProgram::SharedPtr cs = ComputeProgram::createFromFile("SimulateWater.cs.hlsl");
   mHeightResources.mSimulatePass.mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
   mHeightResources.mSimulatePass.mpComputeState = ComputeState::create();
@@ -87,9 +111,10 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
   mHeightResources.mpState->setProgram(heightProgram);
   mHeightResources.mpState->setVao(vaoPair.first);
 
+  mHeightResources.mpVars->setSampler("gSampler", mpUtils->GetTrilienarClampSampler());
 }
 
-void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
+void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx, Texture::SharedPtr dstTex)
 {
   mNoiseResources.mNoisePass.psPerFrameData.time += dt * mNoiseResources.mNoisePass.timeScale;
   //Set Vars
@@ -103,21 +128,40 @@ void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx)
   pCtx->popGraphicsState();
 
   //Save result
-  mNoiseResources.mpNoiseTex = mNoiseResources.mNoisePass.mpFbo->getColorTexture(0);
+  //It's giving me a warning about the state not being correct but copyresource does resource barriers 
+  //and it clearly is fuynctioning... so?
+  pCtx->copyResource(dstTex.get(), mNoiseResources.mNoisePass.mpFbo->getColorTexture(0).get()); 
 }
 
 void WaterSimulation::SimulateHeightWater(RenderContext::SharedPtr pCtx)
 {
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "newFlow", mHeightResources.mpFlowTex);
+    "prevFlowTex", mHeightResources.mSimulatePass.mpPrevFlowTex);
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "newHeight", mHeightResources.mpHeightTex);
+    "prevHeightTex", mHeightResources.mSimulatePass.mpPrevHeightTex);
+  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
+    "newFlowTex", mHeightResources.mpFlowTex);
+  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
+    "newHeightTex", mHeightResources.mpHeightTex);
   pCtx->pushComputeState(mHeightResources.mSimulatePass.mpComputeState);
   pCtx->pushComputeVars(mHeightResources.mSimulatePass.mpComputeVars);
   int numThreadGroups = mHeightResources.kTextureDimensions / mHeightResources.kNumThreadsPerGroup;
   pCtx->dispatch(numThreadGroups, numThreadGroups, 1);
   pCtx->popComputeVars();
   pCtx->popComputeState();
+  
+  pCtx->blit(mHeightResources.mpHeightTex->getSRV(), 
+             mHeightResources.mSimulatePass.mpPrevHeightTex->getRTV());
+  pCtx->blit(mHeightResources.mpFlowTex->getSRV(),
+    mHeightResources.mSimulatePass.mpPrevFlowTex->getRTV());
+  //mHeightResources.mSimulatePass.mpPrevHeightTex = mHeightResources.mpHeightTex;
+  //mHeightResources.mSimulatePass.mpPrevFlowTex = mHeightResources.mpFlowTex;
+
+
+//  pCtx->copyResource(mHeightResources.mSimulatePass.mpPrevHeightTex.get(), 
+//                     mHeightResources.mpHeightTex.get());
+//  pCtx->copyResource(mHeightResources.mSimulatePass.mpPrevFlowTex.get(),
+//                     mHeightResources.mpFlowTex.get());
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -125,9 +169,16 @@ void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
   mCamController.update();
 
   if(isInNoiseMode)
-    RenderNoiseTex(pCtx);
+    RenderNoiseTex(pCtx, mNoiseResources.mpNoiseTex);
   else 
-     SimulateHeightWater(pCtx);
+  {
+    if(!mHeightResources.generatedFirstHeight)
+    {
+      RenderNoiseTex(pCtx, mHeightResources.mSimulatePass.mpPrevHeightTex);
+      mHeightResources.generatedFirstHeight = true;
+    }
+    SimulateHeightWater(pCtx);
+  }
 
   UpdateVars();
 

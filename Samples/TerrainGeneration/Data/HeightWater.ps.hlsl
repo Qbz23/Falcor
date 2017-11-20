@@ -17,8 +17,8 @@ float4 main(DS_OUT dOut) : SV_TARGET
 {
   float3 relativeEyePos = dOut.posW - eyePos;
   float3 normalW = normalize(cross(ddx(relativeEyePos), ddy(relativeEyePos)));
-  //float4 flowColor = gFlowTex.Sample(gSampler, 1.5f);
-	//return float4(flowColor.xyz * dot(normalW, float3(0, -1, 0)), 1.0f);
-  //return flowColor;
-  return float4(dOut.uv, 0, 1);
+  float4 flowColor = gFlowTex.Sample(gSampler, dOut.uv);
+  //return float4(flowColor.xyz * dot(normalW, float3(0, -1, 0)), 1.0f);
+   return float4(flowColor.xyz, 1.0f);
+  //return float4(dOut.uv, 0, 1);
 }
