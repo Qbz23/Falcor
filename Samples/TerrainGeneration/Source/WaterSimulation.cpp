@@ -62,38 +62,22 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 	  1u,
 	  nullptr,
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-  //Flow
-  mHeightResources.mpFlowTex = Texture::create2D(
-    mHeightResources.kTextureDimensions,
-    mHeightResources.kTextureDimensions,
-	  ResourceFormat::RGBA32Float,
-	  1u,
-	  1u,
-	  nullptr,
-	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-  //Previous height
-  mHeightResources.mSimulatePass.mpPrevHeightTex = Texture::create2D(
-    mHeightResources.kTextureDimensions,
-    mHeightResources.kTextureDimensions,
-    ResourceFormat::R32Float,
-    1u,
-    1u,
-    nullptr,
-    Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess | Resource::BindFlags::RenderTarget);
+
 
   //Initialize zero flow
   std::vector<vec4> initialFlowData;
   initialFlowData.resize(
     mHeightResources.kTextureDimensions * mHeightResources.kTextureDimensions, vec4(0, 0, 0, 0));
-  mHeightResources.mSimulatePass.mpPrevFlowTex = Texture::create2D(
+  //Flow
+  mHeightResources.mpFlowTex = Texture::create2D(
     mHeightResources.kTextureDimensions,
     mHeightResources.kTextureDimensions,
     ResourceFormat::RGBA32Float,
     1u,
     1u,
     initialFlowData.data(),
-    Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess | Resource::BindFlags::RenderTarget);
-  //Previous Flow
+    Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+
   ComputeProgram::SharedPtr cs = ComputeProgram::createFromFile("SimulateWater.cs.hlsl");
   mHeightResources.mSimulatePass.mpComputeVars = ComputeVars::create(cs->getActiveVersion()->getReflector());
   mHeightResources.mSimulatePass.mpComputeState = ComputeState::create();
@@ -129,39 +113,22 @@ void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx, Texture::Sha
 
   //Save result
   //It's giving me a warning about the state not being correct but copyresource does resource barriers 
-  //and it clearly is fuynctioning... so?
+  //and it clearly is functioning... so?
   pCtx->copyResource(dstTex.get(), mNoiseResources.mNoisePass.mpFbo->getColorTexture(0).get()); 
 }
 
 void WaterSimulation::SimulateHeightWater(RenderContext::SharedPtr pCtx)
 {
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "prevFlowTex", mHeightResources.mSimulatePass.mpPrevFlowTex);
+    "flowTex", mHeightResources.mpFlowTex);
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "prevHeightTex", mHeightResources.mSimulatePass.mpPrevHeightTex);
-  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "newFlowTex", mHeightResources.mpFlowTex);
-  mHeightResources.mSimulatePass.mpComputeVars->setTexture(
-    "newHeightTex", mHeightResources.mpHeightTex);
+    "heightTex", mHeightResources.mpHeightTex);
   pCtx->pushComputeState(mHeightResources.mSimulatePass.mpComputeState);
   pCtx->pushComputeVars(mHeightResources.mSimulatePass.mpComputeVars);
   int numThreadGroups = mHeightResources.kTextureDimensions / mHeightResources.kNumThreadsPerGroup;
   pCtx->dispatch(numThreadGroups, numThreadGroups, 1);
   pCtx->popComputeVars();
   pCtx->popComputeState();
-  
-  pCtx->blit(mHeightResources.mpHeightTex->getSRV(), 
-             mHeightResources.mSimulatePass.mpPrevHeightTex->getRTV());
-  pCtx->blit(mHeightResources.mpFlowTex->getSRV(),
-    mHeightResources.mSimulatePass.mpPrevFlowTex->getRTV());
-  //mHeightResources.mSimulatePass.mpPrevHeightTex = mHeightResources.mpHeightTex;
-  //mHeightResources.mSimulatePass.mpPrevFlowTex = mHeightResources.mpFlowTex;
-
-
-//  pCtx->copyResource(mHeightResources.mSimulatePass.mpPrevHeightTex.get(), 
-//                     mHeightResources.mpHeightTex.get());
-//  pCtx->copyResource(mHeightResources.mSimulatePass.mpPrevFlowTex.get(),
-//                     mHeightResources.mpFlowTex.get());
 }
 
 void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -174,7 +141,7 @@ void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
   {
     if(!mHeightResources.generatedFirstHeight)
     {
-      RenderNoiseTex(pCtx, mHeightResources.mSimulatePass.mpPrevHeightTex);
+      RenderNoiseTex(pCtx, mHeightResources.mpHeightTex);
       mHeightResources.generatedFirstHeight = true;
     }
     SimulateHeightWater(pCtx);

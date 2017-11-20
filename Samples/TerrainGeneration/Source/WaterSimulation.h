@@ -91,12 +91,10 @@ class WaterSimulation : public EffectSample
     struct HeightWaterResources
     {
       static const int kTextureDimensions = 1024;
-      static const int kNumThreadsPerGroup = 32;
+      static const int kNumThreadsPerGroup = 16;
       bool generatedFirstHeight = false;
       struct SimulatePass
       {
-        Texture::SharedPtr mpPrevHeightTex;
-        Texture::SharedPtr mpPrevFlowTex;
         ComputeVars::SharedPtr mpComputeVars;
         ComputeState::SharedPtr mpComputeState;
       } mSimulatePass;
