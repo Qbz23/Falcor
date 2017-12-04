@@ -1,24 +1,10 @@
 RWTexture2D heightTex;
 RWTexture2D flowTex;
 
-//just hardcoding an area here is fine 
-//But ideally, should be able to calculate the "width"
-//associated with 1 texel 
-static const float area = 1.0f;
-static const float density = 1.0f;
-static const float dt = 0.000016f;
-
-//clockwise from top left
-static const int2 neighborOffset[8] = {
-  int2(-1, -1), //TL
-  int2(0, -1), //T
-  int2(1, -1), //TR
-  int2(1, 0), //R
-  int2(1, 1), //BR 
-  int2(0, 1), //B
-  int2(-1, 1), //BL
-  int2(-1, 0) //L 
-  };
+cbuffer CsPerFrame
+{
+  float dt;
+};
 
 //Need 16(+1)x16(+1) groupshared array
 // 16x16 block  

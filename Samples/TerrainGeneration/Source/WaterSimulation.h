@@ -37,6 +37,7 @@ class WaterSimulation : public EffectSample
     const float kSmallestMaxDistance = 0.01f;
     const int kSmallestTessFactor = 2;
     const int kLargestTessFactor = 64;
+    float timeScale = 0.05f;
 
     struct NoiseWaterResources
     {
@@ -69,7 +70,6 @@ class WaterSimulation : public EffectSample
         NoisePsPerFrame psPerFrameData;
         ConstantBuffer::SharedPtr psPerFrame;
         Fbo::SharedPtr mpFbo;
-        float timeScale = 0.1f;
       } mNoisePass;
 
       GraphicsState::SharedPtr mpState;
@@ -93,6 +93,8 @@ class WaterSimulation : public EffectSample
       static const int kTextureDimensions = 1024;
       static const int kNumThreadsPerGroup = 16;
       bool generatedFirstHeight = false;
+      std::vector<vec4> zeroFlow; 
+
       struct SimulatePass
       {
         ComputeVars::SharedPtr mpComputeVars;
@@ -109,12 +111,18 @@ class WaterSimulation : public EffectSample
         vec3 eyePos;
       } mPsPerFrame;
 
+      struct CsPerFrame
+      {
+        float dt = 0.000016f;
+      } mCsPerFrame;
+
       Texture::SharedPtr mpHeightTex;
       Texture::SharedPtr mpFlowTex;
       GraphicsVars::SharedPtr mpVars;
       GraphicsState::SharedPtr mpState;
 
     } mHeightResources;
+
     void SimulateHeightWater(RenderContext::SharedPtr pCtx);
 
 };

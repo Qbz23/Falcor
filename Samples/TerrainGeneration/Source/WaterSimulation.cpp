@@ -65,8 +65,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 
 
   //Initialize zero flow
-  std::vector<vec4> initialFlowData;
-  initialFlowData.resize(
+  mHeightResources.zeroFlow.resize(
     mHeightResources.kTextureDimensions * mHeightResources.kTextureDimensions, vec4(0, 0, 0, 0));
   //Flow
   mHeightResources.mpFlowTex = Texture::create2D(
@@ -75,7 +74,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     ResourceFormat::RGBA32Float,
     1u,
     1u,
-    initialFlowData.data(),
+    mHeightResources.zeroFlow.data(),
     Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
   ComputeProgram::SharedPtr cs = ComputeProgram::createFromFile("SimulateWater.cs.hlsl");
@@ -100,7 +99,7 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 
 void WaterSimulation::RenderNoiseTex(RenderContext::SharedPtr pCtx, Texture::SharedPtr dstTex)
 {
-  mNoiseResources.mNoisePass.psPerFrameData.time += dt * mNoiseResources.mNoisePass.timeScale;
+  mNoiseResources.mNoisePass.psPerFrameData.time += dt * timeScale;
   //Set Vars
   mNoiseResources.mNoisePass.psPerFrame->setBlob(&mNoiseResources.mNoisePass.psPerFrameData, 0, sizeof(mNoiseResources.mNoisePass.psPerFrameData));
 
@@ -123,6 +122,13 @@ void WaterSimulation::SimulateHeightWater(RenderContext::SharedPtr pCtx)
     "flowTex", mHeightResources.mpFlowTex);
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
     "heightTex", mHeightResources.mpHeightTex);
+
+  float actualDt = dt * timeScale;
+  mHeightResources.waterFlowResetTimer += actualDt;
+  mHeightResources.mCsPerFrame.dt = dt * timeScale;
+  auto cb = mHeightResources.mSimulatePass.mpComputeVars->getConstantBuffer("CsPerFrame");
+  cb->setBlob(&mHeightResources.mCsPerFrame, 0, sizeof(HeightWaterResources::CsPerFrame));
+
   pCtx->pushComputeState(mHeightResources.mSimulatePass.mpComputeState);
   pCtx->pushComputeVars(mHeightResources.mSimulatePass.mpComputeVars);
   int numThreadGroups = mHeightResources.kTextureDimensions / mHeightResources.kNumThreadsPerGroup;
@@ -141,6 +147,7 @@ void WaterSimulation::preFrameRender(RenderContext::SharedPtr pCtx)
   {
     if(!mHeightResources.generatedFirstHeight)
     {
+      pCtx->updateTexture(mHeightResources.mpFlowTex.get(), mHeightResources.zeroFlow.data());
       RenderNoiseTex(pCtx, mHeightResources.mpHeightTex);
       mHeightResources.generatedFirstHeight = true;
     }
@@ -172,8 +179,6 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
 {
   if (mpGui->beginGroup("Water Simulation"))
   {
-    mpGui->addCheckBox("Noise Mode", isInNoiseMode);
-
     static float cameraSpeed = kInitialCameraSpeed;
     if (mpGui->addFloatVar("Camera Speed", cameraSpeed, 0.1f))
     {
@@ -192,6 +197,24 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
         mNoiseResources.mpState->setRasterizerState(nullptr); //nullptr is default
         mHeightResources.mpState->setRasterizerState(nullptr);
       }
+    }
+
+    mpGui->addCheckBox("Noise Mode", isInNoiseMode);
+    mpGui->addFloatVar("Time Scale", timeScale);
+    if (mpGui->beginGroup("Noise"))
+    {
+      if (!isInNoiseMode)
+      {
+        if(mpGui->addButton("Reset Initial State (Generate Noise)"))
+        {
+          mHeightResources.generatedFirstHeight = false;
+        }
+      }
+      mpGui->addIntVar("Octaves", mNoiseResources.mNoisePass.psPerFrameData.octaves, 1);
+      mpGui->addFloatVar("Amplitude", mNoiseResources.mNoisePass.psPerFrameData.amplitude, 0.001f);
+      mpGui->addFloatVar("Initial Frequency", mNoiseResources.mNoisePass.psPerFrameData.initialFreq);
+      mpGui->addIntVar("Input Scale", mNoiseResources.mNoisePass.psPerFrameData.noiseInputScale);
+      mpGui->endGroup();
     }
 
     if (mpGui->beginGroup("Patch Geometry"))
@@ -224,15 +247,6 @@ void WaterSimulation::onGuiRender(Gui* mpGui)
       mpGui->endGroup();
     }
 
-    if (mpGui->beginGroup("Noise"))
-    {
-      mpGui->addIntVar("Octaves", mNoiseResources.mNoisePass.psPerFrameData.octaves, 1);
-      mpGui->addFloatVar("Amplitude", mNoiseResources.mNoisePass.psPerFrameData.amplitude, 0.001f);
-      mpGui->addFloatVar("Initial Frequency", mNoiseResources.mNoisePass.psPerFrameData.initialFreq);
-      mpGui->addFloatVar("Time Scale", mNoiseResources.mNoisePass.timeScale);
-      mpGui->addIntVar("Input Scale", mNoiseResources.mNoisePass.psPerFrameData.noiseInputScale);
-      mpGui->endGroup();
-    }
     mpGui->endGroup();
   }
 }
@@ -253,10 +267,10 @@ bool WaterSimulation::onKeyEvent(const KeyboardEvent& keyEvent)
         mpCamera->setTarget(mInitialCamTarget);
         return true;
       case KeyboardEvent::Key::Left:
-        mNoiseResources.mNoisePass.timeScale *= 0.9f;
+        timeScale *= 0.9f;
         return true;
       case KeyboardEvent::Key::Right:
-        mNoiseResources.mNoisePass.timeScale *= 1.1f;
+        timeScale *= 1.1f;
         return true;
       case KeyboardEvent::Key::Down:
         mNoiseResources.mNoisePass.psPerFrameData.amplitude *= 0.9f;
