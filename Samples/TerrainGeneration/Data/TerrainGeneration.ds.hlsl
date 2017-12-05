@@ -21,6 +21,7 @@ struct DS_OUT
 	float4 pos : SV_POSITION;
   float3 posW : POSITION;
 	float4 color : COLOR;
+  float2 tex : TEXCOORD;
 };
 
 Texture2D gHeightmap;
@@ -66,9 +67,9 @@ DS_OUT main(HS_CONST_OUT input, float2 UV: SV_DomainLocation,
 
   float2 texTopMid = lerp(patch[0].tex, patch[1].tex, UV.x);
   float2 texBotMid = lerp(patch[2].tex, patch[3].tex, UV.x);
-  float2 tex = lerp(texTopMid, texBotMid, UV.y);
+  output.tex = lerp(texTopMid, texBotMid, UV.y);
 
-  float4 heightmapColor = SampleKernel(tex);
+  float4 heightmapColor = SampleKernel(output.tex);
   output.pos.y += maxHeight * heightmapColor.x;
   output.posW = output.pos.xyz;
   output.pos = mul(output.pos, viewProj);

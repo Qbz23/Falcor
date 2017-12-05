@@ -123,9 +123,11 @@ void WaterSimulation::SimulateHeightWater(RenderContext::SharedPtr pCtx)
   mHeightResources.mSimulatePass.mpComputeVars->setTexture(
     "heightTex", mHeightResources.mpHeightTex);
 
-  float actualDt = dt * timeScale;
-  mHeightResources.waterFlowResetTimer += actualDt;
-  mHeightResources.mCsPerFrame.dt = dt * timeScale;
+  //need a constant dt. I can kinda understand why framerate spikes mess stuff up, 
+  //but I feel like that's wrong and shouldn't completely destroy the simulation, 
+  //but I don't have time to investigate further this late in the semester
+  float actualDt = 0.00016f * timeScale;
+  mHeightResources.mCsPerFrame.dt = actualDt;
   auto cb = mHeightResources.mSimulatePass.mpComputeVars->getConstantBuffer("CsPerFrame");
   cb->setBlob(&mHeightResources.mCsPerFrame, 0, sizeof(HeightWaterResources::CsPerFrame));
 
