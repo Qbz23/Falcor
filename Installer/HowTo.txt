@@ -1,0 +1,39 @@
+TCR compliant Sample install script for Inno Setup version 5.5.9
+
+EULA/				DigiPen EULA
+GAMEDIRECTORY/			Put games content here (include icon file)
+	USERDOCS/		Documentation
+INSTALLER/			Installer output
+REDIST/				Additional redistributable packages
+
+How to use installer script:
+
+Step 1. Change macros:
+	Change all defines according to your project
+	
+Step 2. Change AppID
+	Inside Inno Setup Compiler IDE, click Tools -> Generate GUID
+	then paste the new id in [Setup]
+
+Step 2a. (icon file)
+	Put icon file in GAMEDIRECTORY/, then uncomment the following lines
+
+	; #define MyIconName "GameTest.ico"
+	; SetupIconFile={#MyDistributionFolder}/{#MyIconName}
+
+	Change the icon name from "GameTest.ico" to the actual file name
+	
+Step 3. Modify other settings for additional redistributable packages
+	If there're other redistributables needed to be installed
+	Modify settings in [Tasks], [Files], [Run]
+
+Step 3a. (icon file)
+	The current version of InnoSetup does not support macros for IconFilename.
+	For each of the setting:
+
+	IconFilename: "{app}\{#MyAppName}";
+
+	Change "{#MyAppName}" to the actual icon file name.
+	
+Step 4. Compile
+	Output installer can be found in INSTALL/
