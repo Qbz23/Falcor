@@ -177,6 +177,8 @@ void TerrainGeneration::onShutdown()
 
   mpVars.reset();
   mpState.reset();
+  mDirtTex.reset();
+  mRockyTex.reset();
 }
 
 void TerrainGeneration::UpdateVars()

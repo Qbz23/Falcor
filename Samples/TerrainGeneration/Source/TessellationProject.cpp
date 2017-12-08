@@ -58,9 +58,6 @@ void TessellationProject::onFrameRender()
   //Get around that annoying multiple buffer swapchain d3d12 error 
   mpRenderContext->getGraphicsState()->setFbo(mpDefaultFBO);
   effects[mMode]->onFrameRender(mpRenderContext);
-
-	//Todo this is rendering double text. Not sure why.
-	//renderText(getFpsMsg(), glm::vec2(10, 30));
 }
 
 void TessellationProject::onShutdown()

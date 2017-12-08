@@ -63,7 +63,6 @@ void WaterSimulation::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 	  nullptr,
 	  Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
-
   //Initialize zero flow
   mHeightResources.zeroFlow.resize(
     mHeightResources.kTextureDimensions * mHeightResources.kTextureDimensions, vec4(0, 0, 0, 0));
@@ -295,18 +294,21 @@ bool WaterSimulation::onMouseEvent(const MouseEvent& mouseEvent)
 
 void WaterSimulation::onShutdown()
 {
-  //TODO CHECK. Shit I think I just need a virtual dtor to not 
-  //need to do this. Derived dtor never being called and releasing 
-  //references to shared ptrs;
   mNoiseResources.mNoisePass.mpPass.release();
   mNoiseResources.mNoisePass.mpVars.reset();
   mNoiseResources.mNoisePass.mpState.reset();
   mNoiseResources.mNoisePass.psPerFrame.reset();
   mNoiseResources.mNoisePass.mpFbo.reset();
-
-  mNoiseResources.mpNoiseTex.reset();
   mNoiseResources.mpVars.reset();
   mNoiseResources.mpState.reset();
+  mNoiseResources.mpNoiseTex.reset();
+
+  mHeightResources.mSimulatePass.mpComputeVars.reset();
+  mHeightResources.mSimulatePass.mpComputeState.reset();
+  mHeightResources.mpHeightTex.reset();
+  mHeightResources.mpFlowTex.reset();
+  mHeightResources.mpVars.reset();
+  mHeightResources.mpState.reset();
 }
 
 void WaterSimulation::UpdateVars()
