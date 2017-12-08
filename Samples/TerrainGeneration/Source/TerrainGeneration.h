@@ -71,4 +71,6 @@ class TerrainGeneration : public EffectSample
     //don't want to fatfinger 
     bool leftUp = true;
     Texture::SharedPtr mHeightmaps[kNumHeightmaps];
+    Texture::SharedPtr mDirtTex;
+    Texture::SharedPtr mRockyTex;
 };

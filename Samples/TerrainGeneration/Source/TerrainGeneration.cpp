@@ -43,6 +43,11 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
 
   //Get Sampler
   mpVars->setSampler("gSampler", mpUtils->GetTrilienarClampSampler());
+
+  //dirt tex
+  mDirtTex = createTextureFromFile("DirtTerrain.png", true, false);
+  //rocky tex
+  mRockyTex = createTextureFromFile("RockyTerrain.png", true, false);
 }
 
 void TerrainGeneration::preFrameRender(RenderContext::SharedPtr pCtx)
@@ -167,13 +172,6 @@ bool TerrainGeneration::onMouseEvent(const MouseEvent& mouseEvent)
 
 void TerrainGeneration::onShutdown()
 {
-  //TODO CHECK. Shit I think I just need a virtual dtor to not 
-  //need to do this. Derived dtor never being called and releasing 
-  //references to shared ptrs
-
-  //Not 100% sure why I need to do this. Maybe b/c of the 
-  //subproject effect sample setup? But if i dont do this,
-  //there are live objects on exit
   for (auto i = 0; i < kNumHeightmaps; ++i)
     mHeightmaps[i].reset();
 
@@ -192,6 +190,8 @@ void TerrainGeneration::UpdateVars()
   mpVars->getConstantBuffer("DSPerFrame")->setBlob(&mDsPerFrame, 0, sizeof(DsPerFrame));
   mpVars->getConstantBuffer("PSPerFrame")->setBlob(&mPsPerFrame, 0, sizeof(PsPerFrame));
   mpVars->setTexture("gHeightmap", mHeightmaps[mHeightmapIndex]);
+  mpVars->setTexture("gDirtTex", mDirtTex);
+  mpVars->setTexture("gRockyTex", mRockyTex);
 }
 
 void TerrainGeneration::LoadHeightmaps()
