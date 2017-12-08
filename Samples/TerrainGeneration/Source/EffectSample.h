@@ -11,6 +11,7 @@ class EffectSample
   public:
     using UniquePtr = std::unique_ptr<EffectSample>;
 
+    //Default nullptr, pass in fr ptr if the sample actually needs it
     EffectSample(ProjectUtils* pu) : mpUtils(pu) {}
     virtual ~EffectSample() {};
     virtual void onLoad(const Fbo::SharedPtr& pFbo) {}
@@ -21,8 +22,12 @@ class EffectSample
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) { return false; }
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) { return false; }
     virtual void onResizeSwapChain() {}
+    //It's a pain to deal with this and FrameRate() on sample with the way i did this.
+    //Probably should have made multiple small samples in hindsight
+    void updateDt(float newDt) {dt = newDt;}
 
   protected:
     ProjectUtils* mpUtils;
+    float dt;
 
 };

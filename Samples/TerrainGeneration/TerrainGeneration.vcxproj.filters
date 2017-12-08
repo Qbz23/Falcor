@@ -16,6 +16,9 @@
     <Filter Include="Data\TessellationIntro">
       <UniqueIdentifier>{8ca87525-8981-4b7b-b055-b77525031c8d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Data\Water">
+      <UniqueIdentifier>{e8b90909-ea5c-4e6d-bb4f-c889e7caf570}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Data\Displacement.ds.hlsl">
@@ -66,6 +69,24 @@
     <FxCompile Include="Data\TessellationIntro.vs.hlsl">
       <Filter>Data\TessellationIntro</Filter>
     </FxCompile>
+    <FxCompile Include="Data\NoiseWater.ds.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\Noise.ps.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\NoiseWater.ps.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\SimulateWater.cs.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\HeightWater.ds.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\HeightWater.ps.hlsl">
+      <Filter>Data\Water</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\TessellationIntro.cpp" />
@@ -74,6 +95,7 @@
     <ClCompile Include="Source\InteractivePlane.cpp" />
     <ClCompile Include="Source\TerrainGeneration.cpp" />
     <ClCompile Include="Source\ProjectUtils.cpp" />
+    <ClCompile Include="Source\WaterSimulation.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\TessellationIntro.h" />
@@ -83,5 +105,6 @@
     <ClInclude Include="Source\InteractivePlane.h" />
     <ClInclude Include="Source\TerrainGeneration.h" />
     <ClInclude Include="Source\ProjectUtils.h" />
+    <ClInclude Include="Source\WaterSimulation.h" />
   </ItemGroup>
 </Project>

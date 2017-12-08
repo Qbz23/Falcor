@@ -20,7 +20,9 @@ void TerrainGeneration::onLoad(const Fbo::SharedPtr& pDefaultFbo)
     appendShaderExtension("TerrainGeneration.ps"),
     "",
     appendShaderExtension("TerrainGeneration.hs"),
-    appendShaderExtension("TerrainGeneration.ds"));
+    appendShaderExtension("TerrainGeneration.ds")); 
+  //For the simple noise implementation, probably only need to write a new domain shader 
+  //That displaces based on noise rather than heightmap
   mpVars = GraphicsVars::create(program->getActiveVersion()->getReflector());
 
   mpCamera = Camera::create();
@@ -80,18 +82,16 @@ void TerrainGeneration::onGuiRender(Gui* mpGui)
     if (mpGui->beginGroup("Patch Geometry"))
     {
       //Maybe these should be stored somewhere else but this is only place used
+      //Now its used elsewhere, but should water have its own version of this?
       static int numRows = kInitialNumRows;
       static int numColumns = kInitialNumCols;
       static float patchWidth = kInitialPatchW;
 
-      mpGui->addIntVar("Num Rows", numRows, 1, kMaxRows);
-      mpGui->addIntVar("Num Cols", numColumns, 1, kMaxCols);
-      mpGui->addFloatVar("Patch Wdith", patchWidth, kMinPatchW);
+      auto vaoPair = mpUtils->GridPatchVaoGui(mpGui, numRows, numColumns, patchWidth);
 
-      if (mpGui->addButton("Re-generate Patches"))
+      if (vaoPair.first != nullptr)
       {
         mpState->setVao(nullptr);
-        auto vaoPair = mpUtils->GetGridPatchVao(numRows, numColumns, patchWidth);
         mpState->setVao(vaoPair.first);
         mIndexCount = vaoPair.second;
       }

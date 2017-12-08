@@ -1,7 +1,7 @@
 cbuffer DSPerFrame : register(b1)
 {
   matrix viewProj;
-  float maxHeight;
+  float time;
 };
 
 struct HS_OUT
@@ -21,13 +21,12 @@ struct DS_OUT
 	float4 pos : SV_POSITION;
   float3 posW : POSITION;
 	float4 color : COLOR;
-  float2 tex : TEXCOORD;
 };
 
-Texture2D gHeightmap;
+Texture2D gNoiseTex;
 SamplerState gSampler;
 
-float4 SampleKernel(float2 tex)
+float SampleKernel(float2 tex)
 {
   //TODO fix this, actually do 1 texel, send up h/w
   const float dTex = 1.0f / 1081.0f;
@@ -36,10 +35,10 @@ float4 SampleKernel(float2 tex)
     0.003765f,	0.015019f,	0.023792f,	0.015019f,	0.003765f,
     0.015019f,	0.059912f,	0.094907f,	0.059912f,	0.015019f,
     0.023792f,	0.094907f,	0.150342f,	0.094907f,	0.023792f,
-    0.015019f,	0.059912f,	0.094907f,	0.059912f,	0.015019f,
+    0.015019f,	0.059912f,	0.094907f,	0.059912f,	0.015019f,  
     0.003765f,	0.015019f,	0.023792f,	0.015019f,	0.003765f};
 
-  float4 result = float4(0, 0, 0, 0);
+  float result = 0.f;
   [unroll(5)]
   for(int i = 0; i < 5; ++i)
   {
@@ -47,7 +46,8 @@ float4 SampleKernel(float2 tex)
     for(int j = 0; j < 5; ++j)
     {
       float2 sampleTex = tex + float2(dTex * distances[i], dTex * distances[j]);
-      result += weights[5 * i + j] * gHeightmap.SampleLevel(gSampler, sampleTex, 0);
+      float sampleVal = gNoiseTex.SampleLevel(gSampler, sampleTex, 0).x;
+      result += weights[5 * i + j] * 25 * sampleVal;
     }
   }
 
@@ -67,13 +67,13 @@ DS_OUT main(HS_CONST_OUT input, float2 UV: SV_DomainLocation,
 
   float2 texTopMid = lerp(patch[0].tex, patch[1].tex, UV.x);
   float2 texBotMid = lerp(patch[2].tex, patch[3].tex, UV.x);
-  output.tex = lerp(texTopMid, texBotMid, UV.y);
+  float2 tex = lerp(texTopMid, texBotMid, UV.y);
 
-  float4 heightmapColor = SampleKernel(output.tex);
-  output.pos.y += maxHeight * heightmapColor.x;
+  float heightmapColor = SampleKernel(tex);
+  output.pos.y += heightmapColor.x; // maxHeight * heightmapColor.x;
   output.posW = output.pos.xyz;
   output.pos = mul(output.pos, viewProj);
 
-  output.color = heightmapColor;
+  output.color = float4(heightmapColor, 0, 0, 1);
 	return output;
 }
