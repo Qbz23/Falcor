@@ -27,7 +27,7 @@
 ***************************************************************************/
 #pragma once
 #include "CopyContext.h"
-#include "API/ProgramVars.h"
+#include "Graphics/Program/ProgramVars.h"
 #include "Graphics/ComputeState.h"
 
 namespace Falcor
@@ -107,7 +107,7 @@ namespace Falcor
         */
         virtual void flush(bool wait = false) override;
     protected:
-        ComputeContext() = default;
+        ComputeContext();
         void prepareForDispatch();
         void applyComputeVars();
 

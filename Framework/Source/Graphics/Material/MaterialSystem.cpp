@@ -28,7 +28,7 @@
 #include "Framework.h"
 #include "MaterialSystem.h"
 #include "Material.h"
-#include "Graphics/Program.h"
+#include "Graphics/Program/Program.h"
 #include <map>
 
 namespace Falcor
@@ -63,14 +63,14 @@ namespace Falcor
 
         static ProgramVersion::SharedConstPtr findProgramInMap(ProgramVersionMap& programMap, const ProgramVersion* pVersion)
         {
-            auto& it = programMap.find(pVersion);
+            auto it = programMap.find(pVersion);
             return (it == programMap.end()) ? nullptr : it->second;
         }
 
         static ProgramVersionMap& getMaterialProgramMap(const Material* pMaterial)
         {
             uint64_t descId = pMaterial->getDescIdentifier();
-            auto& it = gMaterialProgramMap.find(descId);
+            auto it = gMaterialProgramMap.find(descId);
             if(it == gMaterialProgramMap.end())
             {
                 gMaterialProgramMap[descId] = ProgramVersionMap();

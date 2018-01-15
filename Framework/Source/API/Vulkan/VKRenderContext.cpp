@@ -46,12 +46,6 @@ namespace Falcor
         }
 
         pCtx->bindDescriptorHeaps();
-
-        if (spDrawCommandSig == nullptr)
-        {
-            initDrawCommandSignatures();
-        }
-
         return pCtx;
     }
 
@@ -175,11 +169,11 @@ namespace Falcor
         {
             for (uint32_t i = 0; i < colorTargets; i++)
             {
-                auto& pTexture = pFbo->getColorTexture(i);
+                auto pTexture = pFbo->getColorTexture(i);
                 if (pTexture) pCtx->resourceBarrier(pTexture.get(), Resource::State::RenderTarget);
             }
 
-            auto& pTexture = pFbo->getDepthStencilTexture();
+            auto pTexture = pFbo->getDepthStencilTexture();
             if (pTexture) pCtx->resourceBarrier(pTexture.get(), Resource::State::DepthStencil);
         }
     }
@@ -191,6 +185,10 @@ namespace Falcor
 
     void RenderContext::prepareForDraw()
     {
+        assert(mpGraphicsState);
+        // Vao must be valid so at least primitive topology is known
+        assert(mpGraphicsState->getVao().get());
+
         // Apply the vars. Must be first because applyGraphicsVars() might cause a flush
         if(mpGraphicsVars)
         {
@@ -203,7 +201,7 @@ namespace Falcor
         transitionFboResources(this, mpGraphicsState->getFbo().get());
         setViewports(mpLowLevelData->getCommandList(), mpGraphicsState->getViewports());
         setScissors(mpLowLevelData->getCommandList(), mpGraphicsState->getScissors());
-        setVao(this, mpGraphicsState->getVao().get());        
+        setVao(this, mpGraphicsState->getVao().get());
         beginRenderPass(mpLowLevelData->getCommandList(), mpGraphicsState->getFbo().get());
     }
 

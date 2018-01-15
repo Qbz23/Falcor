@@ -30,11 +30,12 @@
 #include <map>
 #include <fstream>
 #include "API/Window.h"
-#include "Graphics/Program.h"
-#include "Utils/OS.h"
+#include "Graphics/Program/Program.h"
+#include "Utils/Platform/OS.h"
 #include "API/FBO.h"
-#include "VR\OpenVR\VRSystem.h"
-#include "Utils\ProgressBar.h"
+#include "VR/OpenVR/VRSystem.h"
+#include "Utils/Platform/ProgressBar.h"
+#include "Utils/StringUtils.h"
 #include <sstream>
 #include <iomanip>
 
@@ -46,6 +47,7 @@ namespace Falcor
 
     void Sample::handleWindowSizeChange()
     {
+        if (!gpDevice) return;
         // Tell the device to resize the swap chain
         mpDefaultFBO = gpDevice->resizeSwapChain(mpWindow->getClientAreaWidth(), mpWindow->getClientAreaHeight());
         mpDefaultPipelineState->setFbo(mpDefaultFBO);
@@ -68,62 +70,65 @@ namespace Falcor
             mPressedKeys.erase(keyEvent.key);
         }
 
-        // Check if the GUI consumes it
-        if (mpGui->onKeyboardEvent(keyEvent))
+        if(gpDevice)
         {
-            return;
-        }
-
-        // Checks if should toggle zoom
-        mpPixelZoom->onKeyboardEvent(keyEvent);
-
-        // Consume system messages first
-        if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
-        {
-            if (keyEvent.mods.isShiftDown && keyEvent.key == KeyboardEvent::Key::F12)
+            // Check if the GUI consumes it
+            if (mpGui->onKeyboardEvent(keyEvent))
             {
-                initVideoCapture();
+                return;
             }
-            else if (!keyEvent.mods.isAltDown && !keyEvent.mods.isCtrlDown && !keyEvent.mods.isShiftDown)
+
+            // Checks if should toggle zoom
+            mpPixelZoom->onKeyboardEvent(keyEvent);
+
+            // Consume system messages first
+            if (keyEvent.type == KeyboardEvent::Type::KeyPressed)
             {
-                switch (keyEvent.key)
+                if (keyEvent.mods.isShiftDown && keyEvent.key == KeyboardEvent::Key::F12)
                 {
-                case KeyboardEvent::Key::F12:
-                    mCaptureScreen = true;
-                    break;
+                    initVideoCapture();
+                }
+                else if (!keyEvent.mods.isAltDown && !keyEvent.mods.isCtrlDown && !keyEvent.mods.isShiftDown)
+                {
+                    switch (keyEvent.key)
+                    {
+                    case KeyboardEvent::Key::F12:
+                        mCaptureScreen = true;
+                        break;
 #if _PROFILING_ENABLED
-                case KeyboardEvent::Key::P:
-                    gProfileEnabled = !gProfileEnabled;
-                    break;
+                    case KeyboardEvent::Key::P:
+                        gProfileEnabled = !gProfileEnabled;
+                        break;
 #endif
-                case KeyboardEvent::Key::V:
-                    mVsyncOn = !mVsyncOn;
-                    gpDevice->toggleVSync(mVsyncOn);
-                    mFrameRate.resetClock();
-                    break;
-                case KeyboardEvent::Key::F1:
-                    toggleText(!mShowText);
-                    break;
-                case KeyboardEvent::Key::F2:
-                    toggleUI(!mShowUI);
-                    break;
-                case KeyboardEvent::Key::F5:
-                    Program::reloadAllPrograms();
-                    onDataReload();
-                    break;
-                case KeyboardEvent::Key::Escape:
-                    if (mVideoCapture.pVideoCapture)
-                    {
-                        endVideoCapture();
+                    case KeyboardEvent::Key::V:
+                        mVsyncOn = !mVsyncOn;
+                        gpDevice->toggleVSync(mVsyncOn);
+                        mFrameRate.resetClock();
+                        break;
+                    case KeyboardEvent::Key::F1:
+                        toggleText(!mShowText);
+                        break;
+                    case KeyboardEvent::Key::F2:
+                        toggleUI(!mShowUI);
+                        break;
+                    case KeyboardEvent::Key::F5:
+                        Program::reloadAllPrograms();
+                        onDataReload();
+                        break;
+                    case KeyboardEvent::Key::Escape:
+                        if (mVideoCapture.pVideoCapture)
+                        {
+                            endVideoCapture();
+                        }
+                        else
+                        {
+                            mpWindow->shutdown();
+                        }
+                        break;
+                    case KeyboardEvent::Key::Equal:
+                        mFreezeTime = !mFreezeTime;
+                        break;
                     }
-                    else
-                    {
-                        mpWindow->shutdown();
-                    }
-                    break;
-                case KeyboardEvent::Key::Equal:
-                    mFreezeTime = !mFreezeTime;
-                    break;
                 }
             }
         }
@@ -134,8 +139,11 @@ namespace Falcor
 
     void Sample::handleMouseEvent(const MouseEvent& mouseEvent)
     {
-        if (mpGui->onMouseEvent(mouseEvent)) return;
-        if (mpPixelZoom->onMouseEvent(mouseEvent)) return;
+        if(gpDevice)
+        {
+            if (mpGui->onMouseEvent(mouseEvent)) return;
+            if (mpPixelZoom->onMouseEvent(mouseEvent)) return;
+        }
         onMouseEvent(mouseEvent);
     }
 
@@ -155,11 +163,11 @@ namespace Falcor
         mpTextRenderer.reset();
         mpPixelZoom.reset();
         mpRenderContext.reset();
-        gpDevice->cleanup();
+        if(gpDevice) gpDevice->cleanup();
         gpDevice.reset();
     }
 
-    void Sample::run(const SampleConfig& config)
+    void Sample::run(const SampleConfig& config, uint32_t argc, char** argv)
     {
         mTimeScale = config.timeScale;
         mFixedTimeDelta = config.fixedTimeDelta;
@@ -168,6 +176,14 @@ namespace Falcor
         // Start the logger
         Logger::init();
         Logger::showBoxOnError(config.showMessageBoxOnError);
+
+        // Create the window
+        mpWindow = Window::create(config.windowDesc, this);
+        if (mpWindow == nullptr)
+        {
+            logError("Failed to create device and window");
+            return;
+        }
 
         // Show the progress bar
         ProgressBar::MessageList msgList =
@@ -183,46 +199,57 @@ namespace Falcor
 
         ProgressBar::SharedPtr pBar = ProgressBar::create(msgList);
 
-        // Create the window
-        mpWindow = Window::create(config.windowDesc, this);
-        if (mpWindow == nullptr)
+        if(is_set(config.flags, SampleConfig::Flags::DoNotCreateDevice) == false)
         {
-            logError("Failed to create device and window");
-            return;
+            Device::Desc d = config.deviceDesc;
+            gpDevice = Device::create(mpWindow, config.deviceDesc);
+            if (gpDevice == nullptr)
+            {
+                logError("Failed to create device");
+                return;
+            }
+
+            if (config.deviceCreatedCallback != nullptr)
+            {
+                config.deviceCreatedCallback();
+            }
+
+            // Get the default objects before calling onLoad()
+            mpDefaultFBO = gpDevice->getSwapChainFbo();
+            mpDefaultPipelineState = GraphicsState::create();
+            mpDefaultPipelineState->setFbo(mpDefaultFBO);
+            mpRenderContext = gpDevice->getRenderContext();
+            mpRenderContext->setGraphicsState(mpDefaultPipelineState);
+
+            // Init the UI
+            initUI();
+
+            mpPixelZoom = PixelZoom::create(mpDefaultFBO.get());
+        }
+        else
+        {
+            mShowText = false;
+            mShowUI = false;
         }
 
-        Device::Desc d = config.deviceDesc;
-        gpDevice = Device::create(mpWindow, config.deviceDesc);
-        if (gpDevice == nullptr)
-        {
-            logError("Failed to create device");
-            return;
-        }
-
-        if (config.deviceCreatedCallback != nullptr)
-        {
-            config.deviceCreatedCallback();
-        }
-
+#ifdef _WIN32
         // Set the icon
         setWindowIcon("Framework\\Nvidia.ico", mpWindow->getApiHandle());
 
-        // Get the default objects before calling onLoad()
-        mpDefaultFBO = gpDevice->getSwapChainFbo();
-        mpDefaultPipelineState = GraphicsState::create();
-        mpDefaultPipelineState->setFbo(mpDefaultFBO);
-        mpRenderContext = gpDevice->getRenderContext();
-        mpRenderContext->setGraphicsState(mpDefaultPipelineState);
-
-        // Init the UI
-        initUI();
+        if (argc == 0 || argv == nullptr)
+        {
+            mArgList.parseCommandLine(GetCommandLineA());
+        }
+        else
+#endif
+        {
+            mArgList.parseCommandLine(concatCommandLine(argc, argv));
+        }
 
         // Load and run
-        mArgList.parseCommandLine(GetCommandLineA());
-        mpPixelZoom = PixelZoom::create(mpDefaultFBO.get());
-
         onLoad();
         pBar = nullptr;
+
         mFrameRate.resetClock();
         mpWindow->msgLoop();
 
@@ -241,6 +268,12 @@ namespace Falcor
             float elapsedTime = mFrameRate.getLastFrameTime() * mTimeScale;
             mCurrentTime += elapsedTime;
         }
+    }
+
+    void Sample::setSampleGuiWindowSize(uint32_t width, uint32_t height)
+    {
+        mSampleGuiWidth = width;
+        mSampleGuiHeight = height;
     }
 
     void Sample::renderGUI()
@@ -264,7 +297,7 @@ namespace Falcor
             ;
 #endif
 
-        mpGui->pushWindow("Falcor", 250, 200, 20, 40, false);
+        mpGui->pushWindow("Falcor", mSampleGuiWidth, mSampleGuiHeight, 20, 40, false);
         mpGui->addText("Keyboard Shortcuts");
         mpGui->addTooltip(help, true);
 
@@ -293,28 +326,30 @@ namespace Falcor
                 mFreezeTime = true;
                 mCurrentTime = 0.0f;
             }
-
+            
             mCaptureScreen = mpGui->addButton("Screen Capture");
             if (mpGui->addButton("Video Capture", true))
             {
                 initVideoCapture();
             }
+
             mpGui->endGroup();
         }
 
         onGuiRender();
         mpGui->popWindow();
-
+        
         if (mVideoCapture.pUI)
         {
             mVideoCapture.pUI->render(mpGui.get());
         }
+
         mpGui->render(mpRenderContext.get(), mFrameRate.getLastFrameTime());
     }
 
     void Sample::renderFrame()
     {
-        if (gpDevice->isWindowOccluded())
+        if (gpDevice && gpDevice->isWindowOccluded())
         {
             return;
         }
@@ -323,13 +358,15 @@ namespace Falcor
         {
             PROFILE(onFrameRender);
             // The swap-chain FBO might have changed between frames, so get it
-            mpDefaultFBO = gpDevice->getSwapChainFbo();
-            mpRenderContext = gpDevice->getRenderContext();
+            if(gpDevice)
+            {
+                mpDefaultFBO = gpDevice->getSwapChainFbo();
+                mpRenderContext = gpDevice->getRenderContext();
+                // Bind the default state
+                mpRenderContext->setGraphicsState(mpDefaultPipelineState);
+                mpDefaultPipelineState->setFbo(mpDefaultFBO);
+            }
             calculateTime();
-
-            // Bind the default state
-            mpRenderContext->setGraphicsState(mpDefaultPipelineState);
-            mpDefaultPipelineState->setFbo(mpDefaultFBO);
             onFrameRender();
         }
         {
@@ -341,7 +378,10 @@ namespace Falcor
         }
 
         renderText(getFpsMsg(), glm::vec2(10, 10));
-        mpPixelZoom->render(mpRenderContext.get(), gpDevice->getSwapChainFbo().get());
+        if(mpPixelZoom)
+        {
+            mpPixelZoom->render(mpRenderContext.get(), gpDevice->getSwapChainFbo().get());
+        }
 
         captureVideoFrame();
         printProfileData();
@@ -349,6 +389,8 @@ namespace Falcor
         {
             captureScreen();
         }
+
+        if(gpDevice)
         {
             PROFILE(present);
             gpDevice->present();
@@ -399,7 +441,7 @@ namespace Falcor
 
     void Sample::toggleText(bool enabled)
     {
-        mShowText = enabled;
+        mShowText = enabled && gpDevice;
     }
 
     void Sample::resizeSwapChain(uint32_t width, uint32_t height)

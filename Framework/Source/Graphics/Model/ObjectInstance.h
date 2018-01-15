@@ -44,11 +44,11 @@ namespace Falcor
         transform is applied after the Base transform can be set through the IMovableObject interface. This is currently used by paths.
     */
     template<typename ObjectType>
-    class ObjectInstance : public IMovableObject, public inherit_shared_from_this<IMovableObject, ObjectInstance<typename ObjectType>>
+    class ObjectInstance : public IMovableObject, public inherit_shared_from_this<IMovableObject, ObjectInstance<ObjectType>>
     {
     public:
-        using SharedPtr = std::shared_ptr<ObjectInstance<typename ObjectType>>;
-        using SharedConstPtr = std::shared_ptr<const ObjectInstance<typename ObjectType>>;
+        using SharedPtr = std::shared_ptr<ObjectInstance<ObjectType>>;
+        using SharedConstPtr = std::shared_ptr<const ObjectInstance<ObjectType>>;
 
         /** Constructs an object instance with a transform
             \param[in] pObject Object to create an instance of
@@ -200,6 +200,12 @@ namespace Falcor
             return mFinalTransformMatrix;
         }
 
+        const glm::mat4& getPrevTransformMatrix() const
+        {
+            updateInstanceProperties();
+            return mPrevFinalTransformMatrix;
+        }
+
         /** Gets the bounding box
             \return Bounding box
         */
@@ -243,11 +249,14 @@ namespace Falcor
 
                 if (mMovable.matrixDirty)
                 {
+                    mPrevMovable = mMovable;
                     mMovable.matrix = calculateTransformMatrix(mMovable.translation, mMovable.target, mMovable.up, mMovable.scale);
                     mMovable.matrixDirty = false;
                 }
 
                 mFinalTransformMatrix = mMovable.matrix * mBase.matrix;
+                mPrevFinalTransformMatrix = mPrevMovable.matrix * mBase.matrix;
+
                 mBoundingBox = mpObject->getBoundingBox().transform(mFinalTransformMatrix);
             }
         }
@@ -320,8 +329,10 @@ namespace Falcor
 
         mutable Transform mBase;
         mutable Transform mMovable;
+        mutable Transform mPrevMovable;
 
         mutable glm::mat4 mFinalTransformMatrix;
+        mutable glm::mat4 mPrevFinalTransformMatrix;
         mutable BoundingBox mBoundingBox;
     };
 }

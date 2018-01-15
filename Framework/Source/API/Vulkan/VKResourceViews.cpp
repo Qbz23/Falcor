@@ -28,7 +28,6 @@
 #include "Framework.h"
 #include "API/ResourceViews.h"
 #include "API/Resource.h"
-#include "API/D3D/D3DViews.h"
 #include "API/Device.h"
 
 namespace Falcor
@@ -222,8 +221,16 @@ namespace Falcor
 
     ConstantBufferView::SharedPtr ConstantBufferView::create(ResourceWeakPtr pResource)
     {
-        should_not_get_here();
-        return nullptr;
+        Resource::SharedConstPtr pSharedPtr = pResource.lock();
+
+        if (pSharedPtr == nullptr && sNullView == nullptr)
+        {
+            sNullView = SharedPtr(new ConstantBufferView(pResource, nullptr));
+        }
+
+        if (pSharedPtr == nullptr) return sNullView;
+
+        return SharedPtr(new ConstantBufferView(pResource, nullptr));
     }
 }
 

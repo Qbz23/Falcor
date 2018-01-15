@@ -27,7 +27,7 @@
 ***************************************************************************/
 #pragma once
 #include "API/GraphicsStateObject.h"
-#include "Graphics/GraphicsProgram.h"
+#include "Graphics/Program/GraphicsProgram.h"
 #include "API/VAO.h"
 #include "API/FBO.h"
 #include "API/RasterizerState.h"
@@ -121,7 +121,7 @@ namespace Falcor
 
         /** Set the stencil reference value.
         */
-        GraphicsState& setStencilRef(uint8_t refValue) { mStencilRef = refValue; }
+        GraphicsState& setStencilRef(uint8_t refValue) { mStencilRef = refValue; return *this; }
 
         /** Get the current stencil reference value.
         */

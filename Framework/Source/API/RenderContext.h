@@ -35,7 +35,7 @@
 #include "API/Texture.h"
 #include "Framework.h"
 #include "API/GraphicsStateObject.h"
-#include "API/ProgramVars.h"
+#include "Graphics/Program/ProgramVars.h"
 #include "Graphics/GraphicsState.h"
 #include "API/ComputeContext.h"
 #include "Graphics/FullScreenPass.h"
@@ -138,7 +138,7 @@ namespace Falcor
         
         /** Get the bound graphics program variables object
         */
-        GraphicsVars::SharedPtr getGraphicsVars() const { return mpGraphicsVars; }
+        const GraphicsVars::SharedPtr& getGraphicsVars() const { return mpGraphicsVars; }
 
         /** Push the current graphics vars and sets a new one
         */
@@ -172,7 +172,7 @@ namespace Falcor
         */
         void flush(bool wait = false) override;
     private:
-        RenderContext() = default;
+        RenderContext();
         GraphicsVars::SharedPtr mpGraphicsVars;
         GraphicsState::SharedPtr mpGraphicsState;
         bool mBindGraphicsRootSig = true;

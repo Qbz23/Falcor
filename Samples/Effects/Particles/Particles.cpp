@@ -115,7 +115,7 @@ void Particles::CreateSystemGui()
                     mGuiData.mMaxEmitPerFrame, kConstColorPs, ParticleSystem::kDefaultSimulateShader, mGuiData.mSortSystem);
                 mpParticleSystems.push_back(pSys);
                 mPsData.push_back(vec4(0.f, 0.f, 0.f, 1.f));
-                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getConstantBuffer(0, 2, 0)->setBlob(&mPsData[mPsData.size() - 1].colorData.color1, 0, sizeof(vec4));
+                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getDefaultBlock()->getConstantBuffer("PsPerFrame")->setBlob(&mPsData[mPsData.size() - 1].colorData.color1, 0, sizeof(vec4));
                 break;
             }
             case ExamplePixelShaders::ColorInterp:
@@ -129,7 +129,7 @@ void Particles::CreateSystemGui()
                 perFrame.color2 = vec4(0.f, 0.f, 1.f, 1.f);
                 perFrame.colorT2 = 0.f;
                 mPsData.push_back(perFrame);
-                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getConstantBuffer(0, 2, 0)->setBlob(&mPsData[mPsData.size() - 1].colorData, 0, sizeof(ColorInterpPsPerFrame));
+                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getDefaultBlock()->getConstantBuffer("PsPerFrame")->setBlob(&mPsData[mPsData.size() - 1].colorData, 0, sizeof(ColorInterpPsPerFrame));
                 break;
             }
             case ExamplePixelShaders::Textured:
@@ -143,8 +143,8 @@ void Particles::CreateSystemGui()
                 perFrame.color2 = vec4(1.f, 1.f, 1.f, 0.1f);
                 perFrame.colorT2 = 0.f;
                 mPsData.push_back(PixelShaderData(0, perFrame));
-                pSys->getDrawVars()->setSrv(0, 2, 0, mpTextures[0]->getSRV());
-                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getConstantBuffer(0, 2, 0)->setBlob(&mPsData[mPsData.size() - 1].colorData, 0, sizeof(ColorInterpPsPerFrame));
+                pSys->getDrawVars()->setTexture("gTex", mpTextures[0]);
+                mpParticleSystems[mpParticleSystems.size() - 1]->getDrawVars()->getConstantBuffer("PsPerFrame")->setBlob(&mPsData[mPsData.size() - 1].colorData, 0, sizeof(ColorInterpPsPerFrame));
                 break;
             }
             default:
@@ -181,7 +181,7 @@ void Particles::EditPropertiesGui()
         {
             if (mpGui->addRgbaColor("Color", mPsData[mGuiData.mSystemIndex].colorData.color1))
             {
-                mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->getConstantBuffer(0, 2, 0)->setBlob(&mPsData[mGuiData.mSystemIndex].colorData.color1, 0, sizeof(vec4));
+                mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->getConstantBuffer("PsPerFrame")->setBlob(&mPsData[mGuiData.mSystemIndex].colorData.color1, 0, sizeof(vec4));
             }
             break;
         }
@@ -203,7 +203,7 @@ void Particles::EditPropertiesGui()
             uint32_t texIndex = mPsData[mGuiData.mSystemIndex].texIndex;
             if (mpGui->addDropdown("Texture", mGuiData.mTexDropdown, texIndex))
             {
-                mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->setSrv(0, 2, 0, mpTextures[texIndex]->getSRV());
+                mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->setTexture("gTex", mpTextures[texIndex]);
                 mPsData[mGuiData.mSystemIndex].texIndex = texIndex;
             }
 
@@ -227,11 +227,15 @@ void Particles::UpdateColorInterpolation()
 
     if (dirty)
     {
-        mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->getConstantBuffer(0, 2, 0)->setBlob(&mPsData[mGuiData.mSystemIndex].colorData, 0, sizeof(ColorInterpPsPerFrame));
+        mpParticleSystems[mGuiData.mSystemIndex]->getDrawVars()->getConstantBuffer("PsPerFrame")->setBlob(&mPsData[mGuiData.mSystemIndex].colorData, 0, sizeof(ColorInterpPsPerFrame));
     }
 }
 
+#ifdef _WIN32
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
+#else
+int main(int argc, char** argv)
+#endif
 {
 #ifdef FALCOR_VK
     msgBox("Support for Particle Systems in Vulkan is coming soon!");
@@ -242,5 +246,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     SampleConfig config;
     config.windowDesc.title = "Particles";
     config.windowDesc.resizableWindow = true;
+#ifdef _WIN32
     sample.run(config);
+#else
+    sample.run(config, (uint32_t)argc, argv);
+#endif
+    return 0;
 }

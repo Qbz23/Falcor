@@ -28,18 +28,19 @@
 #include "Framework.h"
 #include "API/StructuredBuffer.h"
 #include "API/Buffer.h"
+#include <cstring>
 
 namespace Falcor
 {
-    template<typename VarType>
-    bool checkVariableByOffset(size_t offset, size_t count, const ProgramReflection::BufferReflection* pBufferDesc);
-    template<typename VarType>
-    bool checkVariableType(ProgramReflection::Variable::Type shaderType, const std::string& name, const std::string& bufferName);
+    template<typename VarType> 
+    bool checkVariableByOffset(size_t offset, size_t count, const ReflectionResourceType* pReflection);
+    template<typename VarType> 
+    bool checkVariableType(const ReflectionType* pShaderType, const std::string& name, const std::string& bufferName);
 
 #define verify_element_index() if(elementIndex >= mElementCount) {logWarning(std::string(__FUNCTION__) + ": elementIndex is out-of-bound. Ignoring call."); return;}
 
-    StructuredBuffer::StructuredBuffer(const ProgramReflection::BufferReflection::SharedConstPtr& pReflector, size_t elementCount, Resource::BindFlags bindFlags)
-        : VariablesBuffer(pReflector, pReflector->getRequiredSize(), elementCount, bindFlags, Buffer::CpuAccess::None)
+    StructuredBuffer::StructuredBuffer(const std::string& name, const ReflectionResourceType::SharedConstPtr& pReflector, size_t elementCount, Resource::BindFlags bindFlags)
+        : VariablesBuffer(name, pReflector, pReflector->getSize(), elementCount, bindFlags, Buffer::CpuAccess::None)
     {
         if (hasUAVCounter())
         {
@@ -48,25 +49,28 @@ namespace Falcor
         }
     }
 
-    StructuredBuffer::SharedPtr StructuredBuffer::create(const ProgramReflection::BufferReflection::SharedConstPtr& pReflection, size_t elementCount, Resource::BindFlags bindFlags)
+    StructuredBuffer::SharedPtr StructuredBuffer::create(const std::string& name, const ReflectionResourceType::SharedConstPtr& pReflection, size_t elementCount, Resource::BindFlags bindFlags)
     {
         assert(elementCount > 0);
-        auto pBuffer = SharedPtr(new StructuredBuffer(pReflection, elementCount, bindFlags));
+        auto pBuffer = SharedPtr(new StructuredBuffer(name, pReflection, elementCount, bindFlags));
         return pBuffer;
     }
 
     StructuredBuffer::SharedPtr StructuredBuffer::create(const Program::SharedPtr& pProgram, const std::string& name, size_t elementCount, Resource::BindFlags bindFlags)
     {
         const auto& pProgReflector = pProgram->getActiveVersion()->getReflector();
-        const auto& pBufferReflector = pProgReflector->getBufferDesc(name, ProgramReflection::BufferReflection::Type::Structured);
-        if (pBufferReflector)
+        const auto& pDefaultBlock = pProgReflector->getDefaultParameterBlock();
+        const ReflectionVar* pVar = pDefaultBlock ? pDefaultBlock->getResource(name).get() : nullptr;
+
+        if (pVar)
         {
-            return create(pBufferReflector, elementCount, bindFlags);
+            ReflectionResourceType::SharedConstPtr pType = pVar->getType()->unwrapArray()->asResourceType()->inherit_shared_from_this::shared_from_this();
+            if(pType && pType->getType() == ReflectionResourceType::Type::StructuredBuffer)
+            {
+                return create(pVar->getName(), pType, elementCount, bindFlags);
+            }
         }
-        else
-        {
-            logError("Can't find a structured buffer named \"" + name + "\" in the program");
-        }
+        logError("Can't find a structured buffer named \"" + name + "\" in the program");
         return nullptr;
     }
 
@@ -86,14 +90,15 @@ namespace Falcor
         {
             mGpuCopyDirty = false;
             const uint8_t* pData = (uint8_t*)map(Buffer::MapType::Read);
-            memcpy(mData.data(), pData, mData.size());
+            std::memcpy(mData.data(), pData, mData.size());
             unmap();
         }
     }
 
     bool StructuredBuffer::hasUAVCounter() const
     {
-        return getBufferReflector()->getStructuredType() != ProgramReflection::BufferReflection::StructuredType::Default;
+        assert(mpReflector->getStructuredBufferType() != ReflectionResourceType::StructuredType::Invalid);
+        return (mpReflector->getStructuredBufferType() != ReflectionResourceType::StructuredType::Default);
     }
 
     StructuredBuffer::~StructuredBuffer() = default;
@@ -106,20 +111,21 @@ namespace Falcor
             return;
         }
         readFromGPU();
-        memcpy(pDest, mData.data() + offset, size);
+        std::memcpy(pDest, mData.data() + offset, size);
     }
 
     template<typename VarType> 
     void StructuredBuffer::getVariable(size_t offset, size_t elementIndex, VarType& value)
     {
         verify_element_index();
-        if(checkVariableByOffset<VarType>(offset, 1, mpReflector.get()))
+        if(_LOG_ENABLED == 0 || checkVariableByOffset<VarType>(offset, 0, mpReflector.get()))
         {
             readFromGPU();
             const uint8_t* pVar = mData.data() + offset + elementIndex * mElementSize;
             value = *(const VarType*)pVar;
         }
     }
+
 #define get_constant_offset(_t) template void StructuredBuffer::getVariable(size_t offset, size_t elementIndex, _t& value)
 
     get_constant_offset(bool);
@@ -161,11 +167,11 @@ namespace Falcor
     template<typename VarType>
     void StructuredBuffer::getVariable(const std::string& name, size_t elementIndex, VarType& value)
     {
-        size_t offset;
-        const auto* pData = mpReflector->getVariableData(name, offset);
-        if ((_LOG_ENABLED == 0) || (pData && checkVariableType<VarType>(pData->type, name, mpReflector->getName())))
+       const auto& pVar = mpReflector->findMember(name);
+       
+        if ((_LOG_ENABLED == 0) || (pVar && checkVariableType<VarType>(pVar->getType().get(), name, mName)))
         {
-            getVariable(offset, elementIndex, value);
+            getVariable(pVar->getOffset(), elementIndex, value);
         }
     }
 
@@ -211,7 +217,7 @@ namespace Falcor
     {
         verify_element_index();
 
-        if (checkVariableByOffset<VarType>(offset, count, mpReflector.get()))
+        if (_LOG_ENABLED == 0 || checkVariableByOffset<VarType>(offset, count, mpReflector.get()))
         {
             readFromGPU();
             const uint8_t* pVar = mData.data() + offset;
@@ -264,11 +270,10 @@ namespace Falcor
     template<typename VarType>
     void StructuredBuffer::getVariableArray(const std::string& name, size_t count, size_t elementIndex, VarType value[])
     {
-        size_t offset;
-        const auto* pData = mpReflector->getVariableData(name, offset);
-        if ((_LOG_ENABLED == 0) || (pData && checkVariableType<VarType>(pData->type, name, mpReflector->getName())))
+        const auto& pVar = mpReflector->findMember(name);
+        if ((_LOG_ENABLED == 0) || (pVar && checkVariableType<VarType>(pVar->getType().get(), name, mName)))
         {
-            getVariableArray(offset, count, elementIndex, value);
+            getVariableArray(pVar->getOffset(), count, elementIndex, value);
         }
     }
 

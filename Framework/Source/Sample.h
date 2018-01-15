@@ -31,9 +31,9 @@
 #include <string>
 #include <stdint.h>
 #include "API/Window.h"
-#include "utils/FrameRate.h"
-#include "utils/Gui.h"
-#include "utils/TextRenderer.h"
+#include "Utils/FrameRate.h"
+#include "Utils/Gui.h"
+#include "Utils/TextRenderer.h"
 #include "API/RenderContext.h"
 #include "Utils/Video/VideoEncoderUI.h"
 #include "API/Device.h"
@@ -52,13 +52,22 @@ namespace Falcor
     */
     struct SampleConfig
     {
-        Window::Desc windowDesc;                                    ///< Controls window and creation
+        /** Flags to control different sample controls
+        */
+        enum class Flags
+        {
+            None              = 0x0,  ///< No flags 
+            DoNotCreateDevice = 0x1,  ///< Do not create a device. Services that depends on the device - such as GUI text - will be disabled. Use this only if you are writing raw-API sample
+        };
+
+        Window::Desc windowDesc;                                    ///< Controls window creation
         Device::Desc deviceDesc;                                    ///< Controls device creation;
         bool showMessageBoxOnError = _SHOW_MB_BY_DEFAULT;           ///< Show message box on framework/API errors.
         float timeScale = 1.0f;                                     ///< A scaling factor for the time elapsed between frames.
         float fixedTimeDelta = 0.0f;                                ///< If non-zero, specifies a fixed simulation time step per frame, which is further affected by time scale.
         bool freezeTimeOnStartup = false;                           ///< Control whether or not to start the clock when the sample start running.
         std::function<void(void)> deviceCreatedCallback = nullptr;  ///< Callback function which will be called after the device is created
+        Flags flags = Flags::None;                                  ///< Sample flags
     };
 
     /** Bootstrapper class for Falcor.
@@ -74,9 +83,14 @@ namespace Falcor
         Sample& operator=(const Sample&) = delete;
 
         /** Entry-point to Sample. User should call this to start processing.
+            On Windows, command line args will be retrieved and parsed even if not passed through this function.
+            On Linux, this function is the only way to feed the sample command line args.
+
             \param[in] config Requested sample configuration
+            \param[in] argc Optional. Number of command line arguments
+            \param[in] argv Optional. Array of command line arguments
         */
-        virtual void run(const SampleConfig& config);
+        virtual void run(const SampleConfig& config, uint32_t argc = 0, char** argv = nullptr);
 
     protected:
         // Callbacks
@@ -159,7 +173,11 @@ namespace Falcor
 
         /** Show/hide the UI
         */
-        void toggleUI(bool showUI) { mShowUI = showUI; }
+        void toggleUI(bool showUI) { mShowUI = showUI && gpDevice; }
+
+        /** Set the main GUI window size
+        */
+        void setSampleGuiWindowSize(uint32_t width, uint32_t height);
 
         Gui::UniquePtr mpGui;                               ///< Main sample GUI
         RenderContext::SharedPtr mpRenderContext;           ///< The rendering context
@@ -167,7 +185,9 @@ namespace Falcor
         Fbo::SharedPtr mpDefaultFBO;                        ///< The default FBO object
         bool mFreezeTime;                                   ///< Whether global time is frozen
         float mCurrentTime = 0;                             ///< Global time
+        float mTimeScale;                                   ///< Global time scale
         ArgList mArgList;                                   ///< Arguments passed in by command line
+        Window::SharedPtr mpWindow;                         ///< The application's window
 
     protected:
         void renderFrame() override;
@@ -183,7 +203,6 @@ namespace Falcor
 
         void toggleText(bool enabled);
         uint32_t getFrameID() const { return mFrameRate.getFrameCount(); }
-
     private:
         // Private functions
         void initUI();
@@ -194,8 +213,6 @@ namespace Falcor
         void endVideoCapture();
         void captureVideoFrame();
         void renderGUI();
-
-        Window::SharedPtr mpWindow;
 
         bool mVsyncOn = false;
         bool mShowText = true;
@@ -213,11 +230,14 @@ namespace Falcor
         VideoCaptureData mVideoCapture;
 
         FrameRate mFrameRate;
-        float mTimeScale;
+        
         float mFixedTimeDelta;
 
         TextRenderer::UniquePtr mpTextRenderer;
         std::set<KeyboardEvent::Key> mPressedKeys;
         PixelZoom::SharedPtr mpPixelZoom;
+        uint32_t mSampleGuiWidth = 250;
+        uint32_t mSampleGuiHeight = 200;
     };
+    enum_class_operators(SampleConfig::Flags);
 };

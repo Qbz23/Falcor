@@ -30,7 +30,7 @@
 #include "Utils/Gui.h"
 #include "Graphics/Camera/CameraController.h"
 #include "Graphics/Scene/Scene.h"
-#include "utils/CpuTimer.h"
+#include "Utils/CpuTimer.h"
 #include "API/ConstantBuffer.h"
 #include "Utils/DebugDrawer.h"
 
@@ -92,7 +92,7 @@ namespace Falcor
 
         void detachCameraController();
 
-        Scene* getScene() const { return mpScene.get(); }
+        Scene::SharedPtr getScene() const { return mpScene; }
 
         void toggleStaticMaterialCompilation(bool on) { mCompileMaterialWithProgram = on; }
 
@@ -116,14 +116,17 @@ namespace Falcor
         static const char* kPerMaterialCbName;
         static const char* kPerFrameCbName;
         static const char* kPerMeshCbName;
+        static const char* kBoneCbName;
 
         static size_t sBonesOffset;
+        static size_t sBonesInvTransposeOffset;
         static size_t sCameraDataOffset;
         static size_t sLightCountOffset;
         static size_t sLightArrayOffset;
         static size_t sAmbientLightOffset;
         static size_t sWorldMatArraySize;
         static size_t sWorldMatOffset;
+        static size_t sPrevWorldMatOffset;
         static size_t sWorldInvTransposeMatOffset;
         static size_t sMeshIdOffset;
         static size_t sDrawIDOffset;

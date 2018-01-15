@@ -58,7 +58,7 @@ void ShaderToy::onLoad()
     mpToyVars = GraphicsVars::create(mpMainPass->getProgram()->getActiveVersion()->getReflector());
 
     // Get buffer finding
-    mToyCBBinding = mpMainPass->getProgram()->getActiveVersion()->getReflector()->getBufferBinding("ToyCB").baseRegIndex;
+    mToyCBBinding = mpMainPass->getProgram()->getActiveVersion()->getReflector()->getDefaultParameterBlock()->getResourceBinding("ToyCB");
 }
 
 void ShaderToy::onFrameRender()
@@ -66,11 +66,12 @@ void ShaderToy::onFrameRender()
     // iResolution
     float width = (float)mpDefaultFBO->getWidth();
     float height = (float)mpDefaultFBO->getHeight();
-    mpToyVars->getConstantBuffer(0, mToyCBBinding, 0)["iResolution"] = glm::vec2(width, height);;
+    ParameterBlock* pDefaultBlock = mpToyVars->getDefaultBlock().get();
+    pDefaultBlock->getConstantBuffer(mToyCBBinding, 0)["iResolution"] = glm::vec2(width, height);;
 
     // iGlobalTime
     float iGlobalTime = (float)mCurrentTime;  
-    mpToyVars->getConstantBuffer(0, mToyCBBinding, 0)["iGlobalTime"] = iGlobalTime;
+    pDefaultBlock->getConstantBuffer(mToyCBBinding, 0)["iGlobalTime"] = iGlobalTime;
 
     // run final pass
     mpRenderContext->setGraphicsVars(mpToyVars);
@@ -111,7 +112,11 @@ void ShaderToy::onResizeSwapChain()
     mAspectRatio = (float(width) / float(height));
 }
 
+#ifdef _WIN32
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
+#else
+int main(int argc, char** argv)
+#endif
 {
     ShaderToy sample;
     SampleConfig config;
@@ -120,5 +125,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     config.deviceDesc.enableVsync = true;
     config.windowDesc.resizableWindow = true;
     config.windowDesc.title = "Falcor Shader Toy";
+#ifdef _WIN32
     sample.run(config);
+#else
+    sample.run(config, (uint32_t)argc, argv);
+#endif
+    return 0;
 }

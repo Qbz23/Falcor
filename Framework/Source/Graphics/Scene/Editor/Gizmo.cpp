@@ -72,7 +72,7 @@ namespace Falcor
         glm::vec3 gizmoPos = mpAxesInstances[0]->getTranslation();
         glm::vec3 rayDir = mousePosToWorldRay(mouseEvent.pos, pCamera->getViewMatrix(), pCamera->getProjMatrix());
 
-        float intersectDist;
+        float intersectDist = 0.0f;
         bool succeeded = glm::intersectRayPlane(pCamera->getPosition(), rayDir, gizmoPos, mGizmoAxes[(uint32_t)mBestPlaneAxis], intersectDist);
 
         // If failed, try again with reversed normal
@@ -110,13 +110,13 @@ namespace Falcor
     }
 
     // static
-    Gizmo::Type Gizmo::getGizmoType(const Gizmos& gizmos, const Scene::ModelInstance* pInstance)
+    Gizmo::Type Gizmo::getGizmoType(const Gizmos& gizmos, const Model* pModel)
     {
         for (uint32_t i = 0; i < 3; i++)
         {
             if (gizmos[i] != nullptr)
             {
-                if (gizmos[i]->isPartOfGizmo(pInstance))
+                if(gizmos[i]->getModel().get() == pModel)
                 {
                     return (Gizmo::Type)i;
                 }

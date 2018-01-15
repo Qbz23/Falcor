@@ -29,8 +29,8 @@
 #include <memory>
 #include "API/Sampler.h"
 #include "API/Texture.h"
-#include "graphics/Model/Model.h"
-#include "Graphics/Program.h"
+#include "Graphics/Model/Model.h"
+#include "Graphics/Program/Program.h"
 #include "API/ConstantBuffer.h"
 #include "API/DepthStencilState.h"
 #include "API/RasterizerState.h"
@@ -98,9 +98,9 @@ namespace Falcor
 
         struct
         {
-            ProgramVars::BindLocation perFrameCB;
-            ProgramVars::BindLocation sampler;
-            ProgramVars::BindLocation texture;
+            ProgramReflection::BindLocation perFrameCB;
+            ProgramReflection::BindLocation sampler;
+            ProgramReflection::BindLocation texture;
         } mBindLocations;
     };
 }

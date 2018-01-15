@@ -60,7 +60,6 @@ namespace Falcor
             ResourceFormat depthFormat = ResourceFormat::D32Float;          ///< The depth buffer format
             int apiMajorVersion = DEFAULT_API_MAJOR_VERSION;                ///< Requested API major version. Context creation fails if this version is not supported.
             int apiMinorVersion = DEFAULT_API_MINOR_VERSION;                ///< Requested API minor version. Context creation fails if this version is not supported.
-            bool useDebugContext = false;                                   ///< create a debug context. NOTE: Debug configuration always creates a debug context
             std::vector<std::string> requiredExtensions;                    ///< Extensions required by the sample
             bool enableVsync = false;                                       ///< Controls vertical-sync
             bool enableDebugLayer = DEFAULT_ENABLE_DEBUG_LAYER;             ///< Enable the debug layer. The default for release build is false, for debug build it's true.
@@ -107,9 +106,9 @@ namespace Falcor
         Fbo::SharedPtr getSwapChainFbo() const;
 
         /** Get the default render-context.
-            The default render-context is managed completly by the device. The user should just queue commands into it, the device will take care of allocation, submission and synchronization
+            The default render-context is managed completely by the device. The user should just queue commands into it, the device will take care of allocation, submission and synchronization
         */
-        RenderContext::SharedPtr getRenderContext() const { return mpRenderContext; }
+        const RenderContext::SharedPtr& getRenderContext() const { return mpRenderContext; }
 
         /** Get the command queue handle
         */
@@ -140,10 +139,10 @@ namespace Falcor
         */
         Fbo::SharedPtr resizeSwapChain(uint32_t width, uint32_t height);
 
-        DescriptorPool::SharedPtr getCpuDescriptorPool() const { return mpCpuDescPool; }
-        DescriptorPool::SharedPtr getGpuDescriptorPool() const { return mpGpuDescPool; }
-        ResourceAllocator::SharedPtr getResourceAllocator() const { return mpResourceAllocator; }
-        QueryHeap::SharedPtr getTimestampQueryHeap() const { return mTimestampQueryHeap; }
+        const DescriptorPool::SharedPtr& getCpuDescriptorPool() const { return mpCpuDescPool; }
+        const DescriptorPool::SharedPtr& getGpuDescriptorPool() const { return mpGpuDescPool; }
+        const ResourceAllocator::SharedPtr& getResourceAllocator() const { return mpResourceAllocator; }
+        const QueryHeap::SharedPtr& getTimestampQueryHeap() const { return mTimestampQueryHeap; }
         void releaseResource(ApiObjectHandle pResource);
         double getGpuTimestampFrequency() const { return mGpuTimestampFrequency; } // ms/tick
         bool isRgb32FloatSupported() const { return mRgb32FloatSupported; }
@@ -169,7 +168,8 @@ namespace Falcor
         std::queue<ResourceRelease> mDeferredReleases;
 
         uint32_t mCurrentBackBufferIndex;
-        Fbo::SharedPtr mpSwapChainFbos[kSwapChainBuffers];
+        std::vector<Fbo::SharedPtr> mpSwapChainFbos;
+        uint32_t mSwapChainBufferCount = kDefaultSwapChainBuffers;
 
         Device(Window::SharedPtr pWindow) : mpWindow(pWindow) {}
         bool init(const Desc& desc);

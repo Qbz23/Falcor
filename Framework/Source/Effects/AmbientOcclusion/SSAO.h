@@ -29,8 +29,7 @@
 #pragma once
 
 #include "API/FBO.h"
-//#include "Graphics/GraphicsState.h"
-#include "API/ProgramVars.h"
+#include "Graphics/Program/ProgramVars.h"
 #include "Graphics/FullScreenPass.h"
 #include "Data/Effects/SSAOData.h"
 #include "Effects/Utils/GaussianBlur.h"
@@ -62,7 +61,7 @@ namespace Falcor
             \param[in] distribution Distribution of sample points when using a hemisphere kernel.
             \return SSAO pass object.
         */
-        static UniquePtr create(const uvec2& aoMapSize, uint32_t kernelSize = 16, uint32_t blurSize = 5, float blurSigma = 2.0f, const uvec2& noiseSize = uvec2(16), SampleDistribution distribution = SampleDistribution::UniformHammersley);
+        static UniquePtr create(const uvec2& aoMapSize, uint32_t kernelSize = 16, uint32_t blurSize = 5, float blurSigma = 2.0f, const uvec2& noiseSize = uvec2(16), SampleDistribution distribution = SampleDistribution::CosineHammersley);
 
         /** Render GUI for tweaking SSAO settings
         */
@@ -72,10 +71,10 @@ namespace Falcor
             \param[in] pContext Render context
             \param[in] pCamera Camera used to render the scene
             \param[in] pDepthTexture Scene depth buffer
-            \param[in] pNormalTexture Scene normals buffer. If valid, AO is generated with hemisphere kernel, sphere kernel otherwise. Switching kernel shapes triggers shader recompile.
+            \param[in] pNormalTexture Scene world-space normals buffer
             \return AO map texture
         */
-        Texture::SharedPtr generateAOMap(RenderContext* pContext, const Camera* pCamera, const Texture::SharedPtr& pDepthTexture, const Texture::SharedPtr& pNormalTexture = nullptr);
+        Texture::SharedPtr generateAOMap(RenderContext* pContext, const Camera* pCamera, const Texture::SharedPtr& pDepthTexture, const Texture::SharedPtr& pNormalTexturer);
 
         /** Sets blur kernel size
         */
@@ -84,10 +83,6 @@ namespace Falcor
         /** Set blur sigma value
         */
         void setBlurSigma(float sigma) { mpBlur->setSigma(sigma); }
-
-        /** Set distance of kernel offset/bias from the surface in the normal direction. Used with hemisphere sampling.
-        */
-        void setSurfaceOffset(float distance) { mData.surfaceOffset = distance; mDirty = true; }
 
         /** Recreate sampling kernel
             \param[in] kernelSize Number of samples
@@ -107,14 +102,6 @@ namespace Falcor
 
         void upload();
 
-        enum class KernelShape
-        {
-            Sphere,
-            Hemisphere
-        };
-
-        KernelShape mKernelShape = KernelShape::Hemisphere;
-
         void initShader();
 
         SSAOData mData;
@@ -122,20 +109,23 @@ namespace Falcor
 
         Fbo::SharedPtr mpAOFbo;
         GraphicsState::SharedPtr mpSSAOState;
-        Sampler::SharedPtr mpPointSampler;
+        Sampler::SharedPtr mpNoiseSampler;
         Texture::SharedPtr mpNoiseTexture;
+
+        Sampler::SharedPtr mpTextureSampler;
 
         struct
         {
-            ProgramVars::BindLocation internalPerFrameCB;
-            ProgramVars::BindLocation ssaoCB;
-            ProgramVars::BindLocation sampler;
-            ProgramVars::BindLocation depthTex;
-            ProgramVars::BindLocation normalTex;
-            ProgramVars::BindLocation noiseTex;
+            ProgramReflection::BindLocation internalPerFrameCB;
+            ProgramReflection::BindLocation ssaoCB;
+            ProgramReflection::BindLocation noiseSampler;
+            ProgramReflection::BindLocation textureSampler;
+            ProgramReflection::BindLocation depthTex;
+            ProgramReflection::BindLocation normalTex;
+            ProgramReflection::BindLocation noiseTex;
         } mBindLocations;
 
-        uint32_t mHemisphereDistribution = (uint32_t)SampleDistribution::Random;
+        uint32_t mHemisphereDistribution = (uint32_t)SampleDistribution::CosineHammersley;
 
         static const Gui::DropdownList kKernelDropdown;
         static const Gui::DropdownList kDistributionDropdown;

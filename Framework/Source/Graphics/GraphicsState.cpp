@@ -25,10 +25,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-#pragma once
 #include "Framework.h"
 #include "GraphicsState.h"
-#include "API/ProgramVars.h"
+#include "Graphics/Program/ProgramVars.h"
 
 namespace Falcor
 {
@@ -44,12 +43,9 @@ namespace Falcor
         case Vao::Topology::TriangleList:
         case Vao::Topology::TriangleStrip:
             return GraphicsStateObject::PrimitiveType::Triangle;
-        case Vao::Topology::Patch3:
-        case Vao::Topology::Patch4:
-			    return GraphicsStateObject::PrimitiveType::Patch;
         default:
-          should_not_get_here();
-          return GraphicsStateObject::PrimitiveType::Undefined;
+            should_not_get_here();
+            return GraphicsStateObject::PrimitiveType::Undefined;
         }
     }
 
@@ -174,8 +170,7 @@ namespace Falcor
             mDesc.setVao(pVao);
 #endif
 
-            if(mpVao)
-              mpGsoGraph->walk((void*)pVao->getVertexLayout().get());
+            mpGsoGraph->walk(pVao ? (void*)pVao->getVertexLayout().get() : nullptr);
         }
         return *this;
     }

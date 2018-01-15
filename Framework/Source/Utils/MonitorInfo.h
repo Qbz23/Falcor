@@ -27,7 +27,8 @@
 ***************************************************************************/
 #pragma once
 
-#include <atlstr.h>
+// #TODO Implement MonitorInfo cross-platform. GLFW?
+#ifdef _WIN32
 #include <vector>
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/polar_coordinates.hpp"
@@ -62,3 +63,4 @@ namespace Falcor
         static void displayMonitorInfo();
     };
 }
+#endif // _WIN32

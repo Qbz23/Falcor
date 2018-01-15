@@ -28,7 +28,7 @@
 #include "Framework.h"
 #include "Mesh.h"
 #include "Model.h"
-#include "Externals/Assimp/Include/mesh.h"
+#include "assimp/mesh.h"
 #include "glm/common.hpp"
 #include "glm/glm.hpp"
 #include "API/Buffer.h"
@@ -71,7 +71,7 @@ namespace Falcor
         , mBoundingBox(boundingBox)
         , mHasBones(hasBones)
     {
-        uint32_t VertsPerPrim;
+        uint32_t VertsPerPrim = 3;
         switch(topology)
         {
         case Vao::Topology::PointList:

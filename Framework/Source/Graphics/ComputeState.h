@@ -27,7 +27,7 @@
 ***************************************************************************/
 #pragma once
 #include "API/ComputeStateObject.h"
-#include "Graphics/ComputeProgram.h"
+#include "Graphics/Program/ComputeProgram.h"
 #include <stack>
 #include "Utils/Graph.h"
 
@@ -74,7 +74,7 @@ namespace Falcor
         struct CachedData
         {
             const ProgramVersion* pProgramVersion = nullptr;
-            const RootSignature* pRootSig = false;
+            const RootSignature* pRootSig = nullptr;
         };
         CachedData mCachedData;
 
