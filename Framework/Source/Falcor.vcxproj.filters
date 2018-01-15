@@ -2245,5 +2245,6 @@
     <None Include="Data\Framework\Shaders\MaterialBlock.slang">
       <Filter>Data\Framework\Shaders</Filter>
     </None>
+    <None Include="..\..\Samples\Core\ClassShadows\ClassShadows.vcxproj" />
   </ItemGroup>
 </Project>
