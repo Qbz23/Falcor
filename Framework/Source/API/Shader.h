@@ -29,12 +29,108 @@
 #include <string>
 #include <unordered_set>
 
+#include "Externals/Slang/slang.h"
+
 namespace Falcor
 {
-    /** Low-level shader object
-    This class abstracts the API's shader creation and management
+    /** Minimal smart pointer for working with COM objects.
     */
+    template<typename T>
+    struct ComPtr
+    {
+    public:
+        /// Type of the smart pointer itself
+        typedef ComPtr ThisType;
 
+        /// Initialize to a null pointer.
+        ComPtr() : mpObject(nullptr) {}
+
+        /// Release reference to the pointed-to object.
+        ~ComPtr() { if (mpObject) (mpObject)->Release(); }
+
+        /// Add a new reference to an existing object.
+        explicit ComPtr(T* pObject) : mpObject(pObject) { if (pObject) (pObject)->AddRef(); }
+
+        /// Add a new reference to an existing object.
+        ComPtr(const ThisType& rhs) : mpObject(rhs.mpObject) { if (mpObject) (mpObject)->AddRef(); }
+
+        /// Add a new reference to an existing object
+        T* operator=(T* in)
+        {
+            if(in) in->AddRef();
+            if(mpObject) mpObject->Release();
+            mpObject = in;
+            return in;
+        }
+
+        /// Add a new reference to an existing object
+        const ThisType& operator=(const ThisType& rhs)
+        {
+            if(rhs.mpObject) rhs.mpObject->AddRef();
+            if(mpObject) mpObject->Release();
+            mpObject = rhs.mpObject;
+            return *this;
+        }
+
+        /// Transfer ownership of a reference.
+        ComPtr(ThisType&& rhs) : mpObject(rhs.mpObject) { rhs.mpObject = nullptr; }
+
+        /// Transfer ownership of a reference.
+        ComPtr& operator=(ThisType&& rhs) { T* swap = mpObject; mpObject = rhs.mpObject; rhs.mpObject = swap; return *this; }
+
+        /// Clear out object pointer.
+        void setNull()
+        {
+            if( mpObject )
+            {
+                mpObject->Release();
+                mpObject = nullptr;
+            }
+        }
+
+        /// Swap pointers with another reference.
+        void swap(ThisType& rhs)
+        {
+            T* tmp = mpObject;
+            mpObject = rhs.mpObject;
+            rhs.mpObject = tmp;
+        }
+
+        /// Get the underlying object pointer.
+        T* get() const { return mpObject; }
+
+        /// Cast to object pointer type.
+        operator T*() const { return mpObject; }
+
+        /// Access members of underlying object.
+        T* operator->() const { return mpObject; }
+
+        /// Dereference underlying pointer.
+        T& operator*() { return *mpObject; }
+
+        /// Transfer ownership of reference to the caller.
+        T* detach() { T* ptr = mpObject; mpObject = nullptr; return ptr; }
+
+        /// Transfer owenership of reference from the caller.
+        void attach(T* in) { T* old = mpObject; mpObject = in; if(old) old->Release(); }
+
+        /// Get a writable reference suitable for use as a function output argument.
+        T** writeRef() { setNull(); return &mpObject; }
+
+        /// Get a readable reference suitable for use as a function input argument.
+        T*const* readRef() const { return &mpObject; }
+
+    protected:
+        // Disabled: do not take the address of a smart pointer.
+        T** operator&();
+
+        /// The underlying raw object pointer
+        T* mpObject;
+    };
+
+    /** Low-level shader object
+        This class abstracts the API's shader creation and management
+    */
     class Shader : public std::enable_shared_from_this<Shader>
     {
     public:
@@ -42,33 +138,35 @@ namespace Falcor
         using SharedConstPtr = std::shared_ptr<const Shader>;
         using ApiHandle = ShaderHandle;
 
-        struct Blob
-        {
-            enum class Type
-            {
-                Undefined,
-                String,
-                Bytecode
-            };
-            std::vector<uint8_t> data;
-            Type type = Type::Undefined;
-        };
+        typedef ComPtr<ISlangBlob> Blob;
 
         enum class CompilerFlags
         {
-            None                  = 0x0,
-            TreatWarningsAsErrors = 0x1,
-            DumpIntermediates     = 0x2,
+            None                        = 0x0,
+            TreatWarningsAsErrors       = 0x1,
+            DumpIntermediates           = 0x2,
+            FloatingPointModeFast       = 0x4,
+            FloatingPointModePrecise    = 0x8,
         };
 
         class DefineList : public std::map<std::string, std::string>
         {
         public:
-            void add(const std::string& name, const std::string& val = "") { (*this)[name] = val; }
-            void remove(const std::string& name) {(*this).erase(name); }
+            /** Adds a macro definition. If the macro already exists, it will be replaced.
+                \param[in] name The name of macro.
+                \param[in] value Optional. The value of the macro.
+                \return The updated list of macro definitions.
+            */
+            DefineList& add(const std::string& name, const std::string& val = "") { (*this)[name] = val; return *this; }
+
+            /** Removes a macro definition. If the macro doesn't exist, the call will be silently ignored.
+                \param[in] name The name of macro.
+                \return The updated list of macro definitions.
+            */
+            DefineList& remove(const std::string& name) { (*this).erase(name); return *this; }
         };
 
-        /** create a shader object
+        /** Create a shader object
             \param[in] shaderBlog A blob containing the shader code
             \param[in] Type The Type of the shader
             \param[out] log This string will contain the error log message in case shader compilation failed
@@ -84,17 +182,15 @@ namespace Falcor
 
         /** Get the API handle.
         */
-        ApiHandle getApiHandle() const { return mApiHandle; }
+        const ApiHandle& getApiHandle() const { return mApiHandle; }
 
         /** Get the shader Type
         */
         ShaderType getType() const { return mType; }
 
 
-
-#ifdef FALCOR_D3D
+#ifdef FALCOR_D3D12
         ID3DBlobPtr getD3DBlob() const;
-        virtual ID3DBlobPtr compile(const Blob& blob, const std::string&  entryPointName, CompilerFlags flags, std::string& errorLog);
 #endif
 
     protected:

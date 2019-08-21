@@ -1,21 +1,26 @@
 # Controls what config to build samples with. Valid values are "Debug" and "Release"
 SAMPLE_CONFIG:=Release
 
-All : FeatureDemo AllCore AllEffects AllUtils
+All : ForwardRenderer RenderGraphViewer AllCore AllEffects AllUtils
 AllCore : ComputeShader MultiPassPostProcess ShaderToy SimpleDeferred StereoRendering
-AllEffects : AmbientOcclusion EnvMap HashedAlpha NormalMapFiltering Particles PostProcess Shadows
-AllUtils : ModelViewer SceneEditor
+AllEffects : AmbientOcclusion SkyBoxRenderer HashedAlpha HDRToneMapping Shadows
+AllUtils : FalcorTest ModelViewer SceneEditor RenderGraphEditor
 
 # A sample demonstrating Falcor's effects library
-FeatureDemo : $(SAMPLE_CONFIG)
-	$(eval DIR=Samples/FeatureDemo/)
-	@$(CC) $(CXXFLAGS) $(DIR)FeatureDemo.cpp -o $(DIR)FeatureDemo.o
-	@$(CC) $(CXXFLAGS) $(DIR)FeatureDemoControls.cpp -o $(DIR)FeatureDemoControls.o
-	@$(CC) $(CXXFLAGS) $(DIR)FeatureDemoSceneRenderer.cpp -o $(DIR)FeatureDemoSceneRenderer.o
-	@$(CC) -o $(OUT_DIR)FeatureDemo $(DIR)FeatureDemo.o $(DIR)FeatureDemoControls.o $(DIR)FeatureDemoSceneRenderer.o $(ADDITIONAL_LIB_DIRS) $(LIBS) $(RELATIVE_RPATH)
+ForwardRenderer : $(SAMPLE_CONFIG)
+	$(eval DIR=Samples/ForwardRenderer/)
+	@$(CC) $(CXXFLAGS) $(DIR)ForwardRenderer.cpp -o $(DIR)ForwardRenderer.o
+	@$(CC) $(CXXFLAGS) $(DIR)ForwardRendererControls.cpp -o $(DIR)ForwardRendererControls.o
+	@$(CC) $(CXXFLAGS) $(DIR)ForwardRendererSceneRenderer.cpp -o $(DIR)ForwardRendererSceneRenderer.o
+	@$(CC) -o $(OUT_DIR)ForwardRenderer $(DIR)ForwardRenderer.o $(DIR)ForwardRendererControls.o $(DIR)ForwardRendererSceneRenderer.o $(ADDITIONAL_LIB_DIRS) $(LIBS) $(RELATIVE_RPATH)
 	$(call MoveFalcorData,$(OUT_DIR))
 	$(call MoveProjectData,$(DIR), $(OUT_DIR))
 	@echo Built $@
+
+# Render Graph Viewer project
+
+RenderGraphViewer : RenderGraphEditor $(SAMPLE_CONFIG)
+	$(call CompileSample,Samples/RenderGraph/RenderGraphViewer/,RenderGraphViewer.cpp,RenderGraphViewer)
 
 # Core Samples
 
@@ -39,31 +44,38 @@ StereoRendering : $(SAMPLE_CONFIG)
 AmbientOcclusion : $(SAMPLE_CONFIG)
 	$(call CompileSample,Samples/Effects/AmbientOcclusion/,AmbientOcclusion.cpp,AmbientOcclusion)
 
-EnvMap : $(SAMPLE_CONFIG)
-	$(call CompileSample,Samples/Effects/EnvMap/,EnvMap.cpp,EnvMap)
+SkyBoxRenderer : $(SAMPLE_CONFIG)
+	$(call CompileSample,Samples/Effects/SkyBoxRenderer/,SkyBoxRenderer.cpp,SkyBoxRenderer)
 
 HashedAlpha : $(SAMPLE_CONFIG)
 	$(call CompileSample,Samples/Effects/HashedAlpha/,HashedAlpha.cpp,HashedAlpha)
 
-NormalMapFiltering : $(SAMPLE_CONFIG)
-	$(call CompileSample,Samples/Effects/NormalMapFiltering/,NormalMapFiltering.cpp,NormalMapFiltering)
-
-Particles : $(SAMPLE_CONFIG)
-	$(call CompileSample,Samples/Effects/Particles/,Particles.cpp,Particles)
-
-PostProcess : $(SAMPLE_CONFIG)
-	$(call CompileSample,Samples/Effects/PostProcess/,PostProcess.cpp,PostProcess)
+HDRToneMapping : $(SAMPLE_CONFIG)
+	$(call CompileSample,Samples/Effects/HDRToneMapping/,HDRToneMapping.cpp,HDRToneMapping)
 
 Shadows : $(SAMPLE_CONFIG)
 	$(call CompileSample,Samples/Effects/Shadows/,Shadows.cpp,Shadows)
 
 # Utilities
 
+ALL_TEST_SOURCE_FILES = $(wildcard $(addsuffix *.cpp,Samples/Utils/FalcorTest/Tests/))
+ALL_TEST_OBJ_FILES = $(patsubst %.cpp,%.o,$(ALL_TEST_SOURCE_FILES))
+
+$(ALL_TEST_OBJ_FILES) : %.o : %.cpp
+	@echo $^
+	@$(CC) $(CXXFLAGS) $^ -o $@
+
+FalcorTest : $(SAMPLE_CONFIG) $(ALL_TEST_OBJ_FILES)
+	$(call CompileSample, Samples/Utils/FalcorTest/,FalcorTest.cpp ,FalcorTest, $(ALL_TEST_OBJ_FILES))
+
 ModelViewer : $(SAMPLE_CONFIG)
 	$(call CompileSample,Samples/Utils/ModelViewer/,ModelViewer.cpp,ModelViewer)
 
 SceneEditor : $(SAMPLE_CONFIG)
-	$(call CompileSample,Samples/Utils/SceneEditor/,SceneEditorSample.cpp,SceneEditor)
+	$(call CompileSample,Samples/Utils/SceneEditor/,SceneEditorApp.cpp,SceneEditor)
+
+RenderGraphEditor : $(SAMPLE_CONFIG)
+	$(call CompileSample,Samples/RenderGraph/RenderGraphEditor/,RenderGraphEditor.cpp,RenderGraphEditor)
 
 CC:=g++
 
@@ -73,18 +85,19 @@ INCLUDES = \
 -I "Framework/Externals/GLM" \
 -I "Framework/Externals/OpenVR/headers" \
 -I "Framework/Externals/RapidJson/include" \
+-I "Framework/Externals/pybind11/include" \
 -I "$(VULKAN_SDK)/include" \
-$(shell pkg-config --cflags assimp gtk+-3.0 glfw3) \
+$(shell pkg-config --cflags assimp gtk+-3.0 glfw3 python3) \
 $(shell pkg-config --cflags libavcodec libavdevice libavformat libswscale libavutil)
 
 ADDITIONAL_LIB_DIRS = -L "Bin/" \
 -L "Framework/Externals/OpenVR/lib" \
--L "Framework/Externals/Slang/bin/linux-x86_64/release" \
+-L "Framework/Externals/Slang/bin/linux-x64/release" \
 -L "$(VULKAN_SDK)/lib"
 
-LIBS = -lfalcor \
+LIBS = -lfalcor -lfalcorshared \
 -lfreeimage -lslang -lslang-glslang -lopenvr_api \
-$(shell pkg-config --libs assimp gtk+-3.0 glfw3 x11) \
+$(shell pkg-config --libs assimp gtk+-3.0 glfw3 x11 python3) \
 $(shell pkg-config --libs libavcodec libavdevice libavformat libswscale libavutil) \
 -lvulkan -lstdc++fs -lpthread -lrt -lm -ldl -lz
 
@@ -107,11 +120,12 @@ SOURCE_DIR:=Framework/Source/
 # All directories containing source code relative from the base Source folder. The "/" in the first line is to include the base Source directory
 RELATIVE_DIRS:=/ \
 API/ API/LowLevel/ API/Vulkan/ API/Vulkan/LowLevel/ \
-Effects/AmbientOcclusion/ Effects/NormalMap/ Effects/ParticleSystem/ Effects/Shadows/ Effects/SkyBox/ Effects/TAA/ Effects/ToneMapping/ Effects/Utils/ \
+Effects/AmbientOcclusion/ Effects/FXAA/ Effects/NormalMap/ Effects/ParticleSystem/ Effects/Shadows/ Effects/SkyBox/ Effects/TAA/ Effects/ToneMapping/ Effects/Utils/ \
 Graphics/ Graphics/Camera/ Graphics/Material/ Graphics/Model/ Graphics/Model/Loaders/ Graphics/Paths/ Graphics/Program/ Graphics/Scene/  Graphics/Scene/Editor/ \
-Utils/ Utils/Math/ Utils/Picking/ Utils/Psychophysics/ Utils/Platform/ Utils/Platform/Linux/ Utils/Video/ \
+Utils/ Utils/Math/ Utils/Scripting/ Utils/Picking/ Utils/PatternGenerators/ Utils/Psychophysics/ Utils/Platform/ Utils/Platform/Linux/ Utils/Video/ \
+Experimental/ Experimental/RenderGraph/ Experimental/RenderPasses/ \
 VR/ VR/OpenVR/ \
-../Externals/dear_imgui/
+../Externals/dear_imgui/ ../Externals/dear_imgui_addons/imguinodegrapheditor/
 
 # RELATIVE_DIRS, but now with paths relative to Makefile
 SOURCE_DIRS = $(addprefix $(SOURCE_DIR), $(RELATIVE_DIRS))
@@ -119,7 +133,7 @@ SOURCE_DIRS = $(addprefix $(SOURCE_DIR), $(RELATIVE_DIRS))
 # All source files enumerated with paths relative to Makefile (base repo)
 # TODO: Fix VKGSO.
 # Filter out VKGraphicsStateObject from rest of config because it currently cannot be compiled with optimizations.
-ALL_SOURCE_FILES = $(filter-out %VKGraphicsStateObject.cpp,$(wildcard $(addsuffix *.cpp,$(SOURCE_DIRS))))
+ALL_SOURCE_FILES = $(filter-out %FalcorSharedObjects.cpp %VKGraphicsStateObject.cpp,$(wildcard $(addsuffix *.cpp,$(SOURCE_DIRS))))
 
 # All expected .o files with the same path as their corresponding .cpp.
 ALL_OBJ_FILES = $(patsubst %.cpp,%.o,$(ALL_SOURCE_FILES))
@@ -130,11 +144,13 @@ RELATIVE_RPATH:="-Wl,-rpath,"'$$'"ORIGIN/"
 
 # Args: (1) Relative Directory, (2) Cpp filename, (3) Executable name
 define CompileSample
-	$(eval O_FILE=$(patsubst %.cpp,%.o,$(2)))
+	$(eval O_FILE=$(patsubst %.cpp,%.o,$(2)))	
 	@echo $(2)
 	@$(CC) $(CXXFLAGS) $(1)$(2) -o $(1)$(O_FILE)
 	@echo Linking $(3)
-	@$(CC) -o $(OUT_DIR)$(3) $(1)$(O_FILE) $(ADDITIONAL_LIB_DIRS) $(LIBS) $(RELATIVE_RPATH)
+	$(eval O_FILE=$(1)$(O_FILE))
+	$(eval O_FILE+=$(4))
+	@$(CC) -o $(OUT_DIR)$(3) $(O_FILE) $(ADDITIONAL_LIB_DIRS) $(LIBS) $(RELATIVE_RPATH)
 	$(call MoveFalcorData,$(OUT_DIR))
 	$(call MoveProjectData,$(1), $(OUT_DIR))
 	@echo Built $(3)
@@ -145,7 +161,7 @@ endef
 define MoveFalcorData
 	$(call MoveProjectData,Framework/Source/,$(1))
 	@cp -r Framework/Source/ShadingUtils/* $(1)/Data/
-	@cp Framework/Externals/Slang/bin/linux-x86_64/release/*.so $(1)
+	@cp Framework/Externals/Slang/bin/linux-x64/release/*.so $(1)
 endef
 
 # Copies the "Data" folder inside the directory specified by Source path to the Destination path
@@ -155,10 +171,21 @@ define MoveProjectData
 endef
 
 # Builds Falcor library in Release
-Release : PreBuild ReleaseConfig $(OUT_DIR)libfalcor.a
+Release : PreBuild ReleaseConfig $(OUT_DIR)libfalcorshared.so $(OUT_DIR)libfalcor.a
 
 # Builds Falcor library in Debug
-Debug : PreBuild DebugConfig $(OUT_DIR)libfalcor.a
+Debug : PreBuild DebugConfig $(OUT_DIR)libfalcorshared.so $(OUT_DIR)libfalcor.a
+
+$(OUT_DIR)libfalcorshared.so : $(OUT_DIR)libfalcor.a
+	$(call CompileSharedLibrary,Framework/FalcorSharedObjects/,FalcorSharedObjects.cpp,libfalcorshared.so)
+
+define CompileSharedLibrary
+	$(eval O_FILE=$(patsubst %.cpp,%.o,$(2)))
+	@echo $(2)
+	@$(CC) -fpic $(CXXFLAGS) $(1)$(2) -o $(1)$(O_FILE) -D BUILDING_SHARED_DLL
+	@echo Linking $(3)
+	@$(CC) -shared -o $(OUT_DIR)$(3) $(1)$(O_FILE)
+endef
 
 # Creates the lib
 $(OUT_DIR)libfalcor.a : $(ALL_OBJ_FILES) $(SOURCE_DIR)API/Vulkan/VKGraphicsStateObject.o

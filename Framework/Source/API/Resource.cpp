@@ -69,6 +69,9 @@ namespace Falcor
         flag_to_str(UnorderedAccess);
         flag_to_str(RenderTarget);
         flag_to_str(DepthStencil);
+#ifdef FALCOR_D3D12
+        flag_to_str(AccelerationStructure);
+#endif
 #undef flag_to_str
 
         return s;
@@ -99,15 +102,19 @@ namespace Falcor
         state_to_str(ResolveSource);
         state_to_str(Present);
         state_to_str(Predication);
+        state_to_str(NonPixelShader);
+#ifdef FALCOR_D3D12
+        state_to_str(AccelerationStructure);
+#endif
 #undef state_to_str
         return s;
     }
 
     template<typename ViewClass>
-    using CreateFuncType = std::function<typename ViewClass::SharedPtr(const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)>;
+    using CreateFuncType = std::function<typename ViewClass::SharedPtr(Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)>;
 
     template<typename ViewClass, typename ViewMapType>
-    typename ViewClass::SharedPtr findViewCommon(const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize, ViewMapType& viewMap, CreateFuncType<ViewClass> createFunc)
+    typename ViewClass::SharedPtr findViewCommon(Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize, ViewMapType& viewMap, CreateFuncType<ViewClass> createFunc)
     {
         uint32_t resMipCount = 1;
         uint32_t resArraySize = 1;
@@ -166,9 +173,9 @@ namespace Falcor
         return viewMap[view];
     }
 
-    DepthStencilView::SharedPtr Resource::getDSV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize) const
+    DepthStencilView::SharedPtr Resource::getDSV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize)
     {
-        auto createFunc = [](const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
+        auto createFunc = [](Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
         {
             return DepthStencilView::create(pResource->shared_from_this(), mostDetailedMip, firstArraySlice, arraySize);
         };
@@ -176,9 +183,9 @@ namespace Falcor
         return findViewCommon<DepthStencilView>(this, mipLevel, 1, firstArraySlice, arraySize, mDsvs, createFunc);
     }
 
-    UnorderedAccessView::SharedPtr Resource::getUAV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize) const
+    UnorderedAccessView::SharedPtr Resource::getUAV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize)
     {
-        auto createFunc = [](const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
+        auto createFunc = [](Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
         {
             return UnorderedAccessView::create(pResource->shared_from_this(), mostDetailedMip, firstArraySlice, arraySize);
         };
@@ -186,9 +193,9 @@ namespace Falcor
         return findViewCommon<UnorderedAccessView>(this, mipLevel, 1, firstArraySlice, arraySize, mUavs, createFunc);
     }
 
-    RenderTargetView::SharedPtr Resource::getRTV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize) const
+    RenderTargetView::SharedPtr Resource::getRTV(uint32_t mipLevel, uint32_t firstArraySlice, uint32_t arraySize)
     {
-        auto createFunc = [](const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
+        auto createFunc = [](Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
         {
             return RenderTargetView::create(pResource->shared_from_this(), mostDetailedMip, firstArraySlice, arraySize);
         };
@@ -196,9 +203,9 @@ namespace Falcor
         return findViewCommon<RenderTargetView>(this, mipLevel, 1, firstArraySlice, arraySize, mRtvs, createFunc);
     }
 
-    ShaderResourceView::SharedPtr Resource::getSRV(uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize) const
+    ShaderResourceView::SharedPtr Resource::getSRV(uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
     {
-        auto createFunc = [](const Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
+        auto createFunc = [](Resource* pResource, uint32_t mostDetailedMip, uint32_t mipCount, uint32_t firstArraySlice, uint32_t arraySize)
         {
             return ShaderResourceView::create(pResource->shared_from_this(), mostDetailedMip, mipCount, firstArraySlice, arraySize);
         };
@@ -213,5 +220,55 @@ namespace Falcor
         mUavs.clear();
         mRtvs.clear();
         mDsvs.clear();
+    }
+
+    Resource::State Resource::getGlobalState() const
+    {
+        if (mState.isGlobal == false)
+        {
+            logWarning("Resource::getGlobalState() - the resource doesn't have a global state. The subresoruces are in a different state, use getSubResourceState() instead");
+            return State::Undefined;
+        }
+        return mState.global;
+    }
+
+    Resource::State Resource::getSubresourceState(uint32_t arraySlice, uint32_t mipLevel) const
+    {
+        const Texture* pTexture = dynamic_cast<const Texture*>(this);
+        if (pTexture)
+        {
+            uint32_t subResource = pTexture->getSubresourceIndex(arraySlice, mipLevel);
+            return (mState.isGlobal) ? mState.global : mState.perSubresource[subResource];
+        }
+        else
+        {
+            logWarning("Calling Resource::getSubresourceState() on an object that is not a texture. This call is invalid, use Resource::getGlobalState() instead");
+            assert(mState.isGlobal);
+            return mState.global;
+        }
+    }
+
+    void Resource::setGlobalState(State newState) const
+    {
+        mState.isGlobal = true;
+        mState.global = newState;
+    }
+
+    void Resource::setSubresourceState(uint32_t arraySlice, uint32_t mipLevel, State newState) const
+    {
+        const Texture* pTexture = dynamic_cast<const Texture*>(this);
+        if (pTexture == nullptr)
+        {
+            logWarning("Calling Resource::setSubresourceState() on an object that is not a texture. This is invalid. Ignoring call");
+            return;
+        }
+
+        // If we are transitioning from a global to local state, initialize the subresource array
+        if (mState.isGlobal)
+        {
+            std::fill(mState.perSubresource.begin(), mState.perSubresource.end(), mState.global);
+        }
+        mState.isGlobal = false;
+        mState.perSubresource[pTexture->getSubresourceIndex(arraySlice, mipLevel)] = newState;
     }
 }

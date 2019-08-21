@@ -27,30 +27,28 @@
 ***************************************************************************/
 #pragma once
 #include "Falcor.h"
-#include "SampleTest.h"
 #include "Utils/Picking/Picking.h"
 
 using namespace Falcor;
 
-class ModelViewer : public Sample
+class ModelViewer : public Renderer
 {
 public:
-    void onLoad() override;
-    void onFrameRender() override;
-    void onShutdown() override;
-    void onResizeSwapChain() override;
-    bool onKeyEvent(const KeyboardEvent& keyEvent) override;
-    bool onMouseEvent(const MouseEvent& mouseEvent) override;
-    void onGuiRender() override;
+    void onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext) override;
+    void onFrameRender(SampleCallbacks* pSample, RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo) override;
+    void onResizeSwapChain(SampleCallbacks* pSample, uint32_t width, uint32_t height) override;
+    bool onKeyEvent(SampleCallbacks* pSample, const KeyboardEvent& keyEvent) override;
+    bool onMouseEvent(SampleCallbacks* pSample, const MouseEvent& mouseEvent) override;
+    void onGuiRender(SampleCallbacks* pSample, Gui* pGui) override;
 
 private:
-    void loadModel();
+    void loadModel(ResourceFormat fboFormat);
     void saveModel();
     void deleteCulledMeshes();
 
-    void loadModelFromFile(const std::string& Filename);
+    void loadModelFromFile(const std::string& Filename, ResourceFormat fboFormat);
     void resetCamera();
-    void renderModelUI();
+    void renderModelUI(Gui* pGui);
     void setModelString(bool isAfterCull, float LoadTime);
 
     Model::SharedPtr mpModel = nullptr;
@@ -96,6 +94,7 @@ private:
     PointLight::SharedPtr mpPointLight;
 
     std::string mModelString;
+    static const std::string skDefaultModel;
 
     float mNearZ;
     float mFarZ;

@@ -1,5 +1,5 @@
 /***************************************************************************
-# Copyright (c) 2015, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -77,6 +77,7 @@
 #include "Graphics/FullScreenPass.h"
 #include "Graphics/TextureHelper.h"
 #include "Graphics/Light.h"
+#include "Graphics/LightProbe.h"
 #include "Graphics/FboHelper.h"
 #include "Graphics/ComputeState.h"
 
@@ -91,9 +92,6 @@
 
 // Material
 #include "Graphics/Material/Material.h"
-#include "Graphics/Material/BasicMaterial.h"
-#include "Graphics/Material/MaterialSystem.h"
-#include "Graphics/Material/MaterialEditor.h"
 
 // Model
 #include "Graphics/Model/Mesh.h"
@@ -104,8 +102,6 @@
 #include "Graphics/Scene/Scene.h"
 #include "Graphics/Scene/SceneRenderer.h"
 #include "Graphics/Scene/Editor/SceneEditor.h"
-#include "Graphics/Scene/SceneUtils.h"
-
 
 // Math
 #include "Utils/Math/FalcorMath.h"
@@ -130,6 +126,8 @@
 #include "Utils/Platform/OS.h"
 #include "Utils/Platform/ProgressBar.h"
 #include "Utils/ThreadPool.h"
+#include "Utils/PatternGenerators/DxSamplePattern.h"
+#include "Utils/PatternGenerators/HaltonSamplePattern.h"
 
 // VR
 #include "VR/OpenVR/VRSystem.h"
@@ -144,9 +142,10 @@
 #include "Effects/AmbientOcclusion/SSAO.h"
 #include "Effects/ParticleSystem/ParticleSystem.h"
 #include "Effects/TAA/TAA.h"
+#include "Effects/FXAA/FXAA.h"
 
-#define FALCOR_MAJOR_VERSION 2
-#define FALCOR_MINOR_VERSION 0
-#define FALCOR_DEV_STAGE "rel"
-#define FALCOR_DEV_REVISION 2
-#define FALCOR_VERSION_STRING "2.0.2"
+#define FALCOR_MAJOR_VERSION 3
+#define FALCOR_MINOR_VERSION 2
+#define FALCOR_DEV_STAGE ""
+#define FALCOR_DEV_REVISION 1
+#define FALCOR_VERSION_STRING "3.2.1"

@@ -36,27 +36,37 @@
 #include "VR/OpenVR/VRSystem.h"
 #include "Utils/Platform/ProgressBar.h"
 #include "Utils/StringUtils.h"
+#include "Graphics/FboHelper.h"
 #include <sstream>
 #include <iomanip>
+#include "Experimental/RenderGraph/RenderPassLibrary.h"
 
 namespace Falcor
 {
-    Sample::Sample()
-    {
-    }
+    static std::string kMonospaceFont = "monospace";
 
     void Sample::handleWindowSizeChange()
     {
         if (!gpDevice) return;
         // Tell the device to resize the swap chain
-        mpDefaultFBO = gpDevice->resizeSwapChain(mpWindow->getClientAreaWidth(), mpWindow->getClientAreaHeight());
-        mpDefaultPipelineState->setFbo(mpDefaultFBO);
+        auto pBackBufferFBO = gpDevice->resizeSwapChain(mpWindow->getClientAreaWidth(), mpWindow->getClientAreaHeight());
+        auto width = pBackBufferFBO->getWidth();
+        auto height = pBackBufferFBO->getHeight();
 
+        // Recreate target fbo
+        auto pCurrentFbo = mpTargetFBO;
+        mpTargetFBO = FboHelper::create2D(width, height, pBackBufferFBO->getDesc());
+        if(mpDefaultPipelineState) mpDefaultPipelineState->setFbo(mpTargetFBO);
+        gpDevice->getRenderContext()->blit(pCurrentFbo->getColorTexture(0)->getSRV(), mpTargetFBO->getRenderTargetView(0));
+        
         // Tell the GUI the swap-chain size changed
-        mpGui->onWindowResize(mpDefaultFBO->getWidth(), mpDefaultFBO->getHeight());
+        if(mpGui) mpGui->onWindowResize(width, height);
+
+        // Resize the pixel zoom
+        if(mpPixelZoom) mpPixelZoom->onResizeSwapChain(gpDevice->getSwapChainFbo().get());
 
         // Call the user callback
-        onResizeSwapChain();
+        if(mpRenderer) mpRenderer->onResizeSwapChain(this, width, height);
     }
 
     void Sample::handleKeyboardEvent(const KeyboardEvent& keyEvent)
@@ -88,6 +98,15 @@ namespace Falcor
                 {
                     initVideoCapture();
                 }
+                else if (keyEvent.mods.isCtrlDown)
+                {
+                    switch (keyEvent.key)
+                    {
+                    case KeyboardEvent::Key::Pause:
+                        mFreezeRendering = !mFreezeRendering;
+                        break;
+                    }
+                }
                 else if (!keyEvent.mods.isAltDown && !keyEvent.mods.isCtrlDown && !keyEvent.mods.isShiftDown)
                 {
                     switch (keyEvent.key)
@@ -109,11 +128,11 @@ namespace Falcor
                         toggleText(!mShowText);
                         break;
                     case KeyboardEvent::Key::F2:
-                        toggleUI(!mShowUI);
+                        toggleUI((mShowUI == UIStatus::ShowAll));
                         break;
                     case KeyboardEvent::Key::F5:
                         Program::reloadAllPrograms();
-                        onDataReload();
+                        if(mpRenderer) mpRenderer->onDataReload(this);
                         break;
                     case KeyboardEvent::Key::Escape:
                         if (mVideoCapture.pVideoCapture)
@@ -125,7 +144,7 @@ namespace Falcor
                             mpWindow->shutdown();
                         }
                         break;
-                    case KeyboardEvent::Key::Equal:
+                    case KeyboardEvent::Key::Pause:
                         mFreezeTime = !mFreezeTime;
                         break;
                     }
@@ -134,7 +153,15 @@ namespace Falcor
         }
 
         // If we got here, this is a user specific message
-        onKeyEvent(keyEvent);
+        if(mpRenderer) mpRenderer->onKeyEvent(this, keyEvent);
+    }
+
+    void Sample::handleDroppedFile(const std::string& filename)
+    {
+        if(mpRenderer)
+        {
+            mpRenderer->onDroppedFile(this, filename);
+        }
     }
 
     void Sample::handleMouseEvent(const MouseEvent& mouseEvent)
@@ -144,8 +171,13 @@ namespace Falcor
             if (mpGui->onMouseEvent(mouseEvent)) return;
             if (mpPixelZoom->onMouseEvent(mouseEvent)) return;
         }
-        onMouseEvent(mouseEvent);
+        if(mpRenderer)
+        {
+            mpRenderer->onMouseEvent(this, mouseEvent);
+        }
     }
+
+    dlldecl void releaseSharedObjects();
 
     // Sample functions
     Sample::~Sample()
@@ -157,25 +189,37 @@ namespace Falcor
 
         VRSystem::cleanup();
 
+        RenderPassLibrary::instance().shutdown();
+        Scripting::shutdown();
         mpGui.reset();
         mpDefaultPipelineState.reset();
-        mpDefaultFBO.reset();
+        mpTargetFBO.reset();
         mpTextRenderer.reset();
         mpPixelZoom.reset();
-        mpRenderContext.reset();
+        releaseSharedObjects();
         if(gpDevice) gpDevice->cleanup();
         gpDevice.reset();
     }
 
-    void Sample::run(const SampleConfig& config, uint32_t argc, char** argv)
+    void Sample::run(const SampleConfig& config, Renderer::UniquePtr& pRenderer)
+    {
+        Sample s(pRenderer);
+        s.runInternal(config, config.argc, config.argv);
+    }
+
+    void Sample::runInternal(const SampleConfig& config, uint32_t argc, char** argv)
     {
         mTimeScale = config.timeScale;
         mFixedTimeDelta = config.fixedTimeDelta;
         mFreezeTime = config.freezeTimeOnStartup;
+        mVsyncOn = config.deviceDesc.enableVsync;
 
-        // Start the logger
-        Logger::init();
+        Scripting::start();
+
+#if _LOG_ENABLED
+        Logger::initialize();
         Logger::showBoxOnError(config.showMessageBoxOnError);
+#endif
 
         // Create the window
         mpWindow = Window::create(config.windowDesc, this);
@@ -208,28 +252,23 @@ namespace Falcor
                 logError("Failed to create device");
                 return;
             }
-
-            if (config.deviceCreatedCallback != nullptr)
-            {
-                config.deviceCreatedCallback();
-            }
-
+            
             // Get the default objects before calling onLoad()
-            mpDefaultFBO = gpDevice->getSwapChainFbo();
+            auto pBackBufferFBO = gpDevice->getSwapChainFbo();
+            mpTargetFBO = FboHelper::create2D(pBackBufferFBO->getWidth(), pBackBufferFBO->getHeight(), pBackBufferFBO->getDesc());
             mpDefaultPipelineState = GraphicsState::create();
-            mpDefaultPipelineState->setFbo(mpDefaultFBO);
-            mpRenderContext = gpDevice->getRenderContext();
-            mpRenderContext->setGraphicsState(mpDefaultPipelineState);
+            mpDefaultPipelineState->setFbo(mpTargetFBO);
+            auto pRenderContext = gpDevice->getRenderContext();
+            pRenderContext->setGraphicsState(mpDefaultPipelineState);
 
             // Init the UI
             initUI();
-
-            mpPixelZoom = PixelZoom::create(mpDefaultFBO.get());
+            mpPixelZoom = PixelZoom::create(mpTargetFBO.get());
         }
         else
         {
             mShowText = false;
-            mShowUI = false;
+            mShowUI = UIStatus::HideAll;
         }
 
 #ifdef _WIN32
@@ -246,14 +285,21 @@ namespace Falcor
             mArgList.parseCommandLine(concatCommandLine(argc, argv));
         }
 
+        // set fixed time delta if it is provided in the command line
+        if (mArgList.argExists("fixedtimedelta"))  mFixedTimeDelta = mArgList["fixedtimedelta"].asFloat();
+
         // Load and run
-        onLoad();
+        mpRenderer->onLoad(this, getRenderContext());
+        initializeTesting();
         pBar = nullptr;
 
         mFrameRate.resetClock();
         mpWindow->msgLoop();
 
-        onShutdown();
+        if (mTestingFrames.size()) { onTestShutdown(); }
+        mpRenderer->onShutdown(this);
+        if (gpDevice) gpDevice->flushAndSync();
+        mpRenderer = nullptr;
         Logger::shutdown();
     }
 
@@ -270,81 +316,150 @@ namespace Falcor
         }
     }
 
-    void Sample::setSampleGuiWindowSize(uint32_t width, uint32_t height)
+    void Sample::setDefaultGuiSize(uint32_t width, uint32_t height)
     {
         mSampleGuiWidth = width;
         mSampleGuiHeight = height;
     }
 
+    void Sample::setDefaultGuiPosition(uint32_t x, uint32_t y)
+    {
+        mSampleGuiPositionX = x;
+        mSampleGuiPositionY = y;
+    }
+
     void Sample::renderGUI()
     {
-        mpGui->beginFrame();
+        if((mShowUI != UIStatus::HideAll) || gProfileEnabled)
+        {
+            mpGui->beginFrame();
 
-        constexpr char help[] =
-            "  'F1'      - Show\\Hide text\n"
-            "  'F2'      - Show\\Hide GUI\n"
-            "  'F5'      - Reload shaders\n"
-            "  'ESC'     - Quit\n"
-            "  'V'       - Toggle VSync\n"
-            "  'F12'     - Capture screenshot\n"
-            "  'Shift+F12' - Video capture\n"
-            "  '='       - Pause\\resume timer\n"
-            "  'Z'       - Zoom in on a pixel\n"
-            "  'MouseWheel' - Change level of zoom\n"
+            constexpr char help[] =
+                "  'F1'      - Show\\Hide text\n"
+                "  'F2'      - Show\\Hide GUI\n"
+                "  'F5'      - Reload shaders\n"
+                "  'ESC'     - Quit\n"
+                "  'V'       - Toggle VSync\n"
+                "  'F12'     - Capture screenshot\n"
+                "  'Shift+F12'  - Video capture\n"
+                "  'Pause'      - Pause\\resume timer\n"
+                "  'Ctrl+Pause' - Pause\\resume the renderer\n"
+                "  'Z'       - Zoom in on a pixel\n"
+                "  'MouseWheel' - Change level of zoom\n"
 #if _PROFILING_ENABLED
-            "  'P'       - Enable profiling\n";
+                "  'P'       - Enable profiling\n";
 #else
-            ;
+                ;
 #endif
 
-        mpGui->pushWindow("Falcor", mSampleGuiWidth, mSampleGuiHeight, 20, 40, false);
-        mpGui->addText("Keyboard Shortcuts");
-        mpGui->addTooltip(help, true);
-
-        if (mpGui->beginGroup("Global Controls"))
-        {
-            mpGui->addFloatVar("Time", mCurrentTime, 0, FLT_MAX);
-            mpGui->addFloatVar("Time Scale", mTimeScale, 0, FLT_MAX);
-
-            if (mVideoCapture.pVideoCapture == nullptr)
+            if(mShowUI == UIStatus::ShowAll)
             {
-                mpGui->addFloatVar("Fixed Time Delta", mFixedTimeDelta, 0, FLT_MAX);
+                mpGui->pushWindow("Falcor", mSampleGuiWidth, mSampleGuiHeight, mSampleGuiPositionX, mSampleGuiPositionY, false, true, true, false);
+                mpGui->addText("Keyboard Shortcuts");
+                mpGui->addTooltip(help, true);
+
+                if (mpGui->beginGroup("Global Controls"))
+                {
+                    mpGui->addFloatVar("Time", mCurrentTime, 0, FLT_MAX);
+
+                    if (mpGui->addButton("Reset"))
+                    {
+                        mCurrentTime = 0.0f;
+                    }
+
+                    if (mpGui->addButton(mFreezeTime ? "Play" : "Pause", true))
+                    {
+                        mFreezeTime = !mFreezeTime;
+                    }
+
+                    if (mpGui->addButton("Stop", true))
+                    {
+                        mFreezeTime = true;
+                        mCurrentTime = 0.0f;
+                    }
+                    if(mpGui->beginGroup("Time Controls"))
+                    {
+                        mpGui->addFloatVar("Scale", mTimeScale, 0, FLT_MAX);
+
+                        if (mVideoCapture.pVideoCapture == nullptr)
+                        {
+                            mpGui->addFloatVar("Fixed Delta", mFixedTimeDelta, 0, FLT_MAX);
+                        }
+                        mpGui->endGroup();
+                    }
+                    mpGui->addSeparator();
+
+                    if (mpGui->addButton(mFreezeRendering ? "Resume Rendering" : "Pause Rendering")) mFreezeRendering = !mFreezeRendering;
+                    mpGui->addTooltip("Freeze the renderer and keep displaying The last rendered frame. The renderer will keep accepting mouse/keyboard/GUI messages. Changes in the UI will not be reflected in the displayed image until the renderer is unfrozen");
+
+                    mpGui->addSeparator();
+
+                    mCaptureScreen = mpGui->addButton("Screen Capture");
+                    if (mpGui->addButton("Video Capture", true))
+                    {
+                        initVideoCapture();
+                    }
+
+                    mpGui->endGroup();
+                }
+
+                mpRenderer->onGuiRender(this, mpGui.get());
+                mpGui->popWindow();
+
+                if (mVideoCapture.displayUI && mVideoCapture.pUI)
+                {
+                    mVideoCapture.pUI->render(mpGui.get());
+                }
             }
 
-            if (mpGui->addButton("Reset"))
+            if (mShowUI == UIStatus::HideGlobal)
             {
-                mCurrentTime = 0.0f;
+                mpRenderer->onGuiRender(this, mpGui.get());
             }
 
-            if (mpGui->addButton(mFreezeTime ? "Play" : "Pause", true))
+            if (gProfileEnabled)
             {
-                mFreezeTime = !mFreezeTime;
+                uint32_t y = gpDevice->getSwapChainFbo()->getHeight() - 360;
+
+                mpGui->setActiveFont(kMonospaceFont);
+                mpGui->pushWindow("Profiler", 650, 350, 10, y);
+                // Stop the timer
+                Profiler::endEvent("renderGUI");
+                mpGui->addText(Profiler::getEventsString().c_str());
+                Profiler::startEvent("renderGUI");
+                mpGui->popWindow();
+                mpGui->setActiveFont("");
             }
 
-            if (mpGui->addButton("Stop", true))
-            {
-                mFreezeTime = true;
-                mCurrentTime = 0.0f;
-            }
-            
-            mCaptureScreen = mpGui->addButton("Screen Capture");
-            if (mpGui->addButton("Video Capture", true))
-            {
-                initVideoCapture();
-            }
-
-            mpGui->endGroup();
+            mpGui->render(getRenderContext(), mFrameRate.getLastFrameTime());
         }
+    }
 
-        onGuiRender();
-        mpGui->popWindow();
-        
-        if (mVideoCapture.pUI)
+    bool Sample::initializeTesting()
+    {
+        bool testFrames = mArgList.argExists("testFrames");
+        if (testFrames)
         {
-            mVideoCapture.pUI->render(mpGui.get());
-        }
+            auto testFrames = mArgList.getValues("testFrames");
+            for (auto frame : testFrames) { mTestingFrames.push_back(frame.asUint64()); }
 
-        mpGui->render(mpRenderContext.get(), mFrameRate.getLastFrameTime());
+            mpRenderer->onInitializeTesting(this);
+        }
+        if (mArgList.argExists("shutdownframe"))   mShutdownFrame = mArgList["shutdownframe"].asUint64();
+        else if(!testFrames)  return false;
+
+        return true;
+    }
+
+    void Sample::onTestFrame()
+    {
+        uint64_t currentFrameID = getFrameID();
+        if (mCurrentTestingIndex < mTestingFrames.size() && currentFrameID == mTestingFrames[mCurrentTestingIndex])
+        {
+            mpRenderer->onTestFrame(this);
+            mCurrentTestingIndex++;
+        }
+        else if (currentFrameID == mShutdownFrame) { shutdown(); }
     }
 
     void Sample::renderFrame()
@@ -356,44 +471,71 @@ namespace Falcor
 
         mFrameRate.newFrame();
         {
-            PROFILE(onFrameRender);
-            // The swap-chain FBO might have changed between frames, so get it
-            if(gpDevice)
-            {
-                mpDefaultFBO = gpDevice->getSwapChainFbo();
-                mpRenderContext = gpDevice->getRenderContext();
-                // Bind the default state
-                mpRenderContext->setGraphicsState(mpDefaultPipelineState);
-                mpDefaultPipelineState->setFbo(mpDefaultFBO);
-            }
+            PROFILE("onFrameRender");
             calculateTime();
-            onFrameRender();
-        }
-        {
-            PROFILE(renderGUI);
-            if (mShowUI)
+            // The swap-chain FBO might have changed between frames, so get it
+            if (!mFreezeRendering)
             {
+                RenderContext* pRenderContext = nullptr;
+                if (gpDevice)
+                {
+                    // Bind the default state
+                    pRenderContext = gpDevice->getRenderContext();
+                    mpDefaultPipelineState->setFbo(mpTargetFBO);
+                    pRenderContext->setGraphicsState(mpDefaultPipelineState);
+                }
+                mpRenderer->onFrameRender(this, pRenderContext, mpTargetFBO);
+            }
+        }
+        
+        if (gpDevice)
+        {
+            // Copy the render-target
+            const auto& pSwapChainFbo = gpDevice->getSwapChainFbo();
+            RenderContext* pCtx = getRenderContext();
+            getRenderContext()->copyResource(pSwapChainFbo->getColorTexture(0).get(), mpTargetFBO->getColorTexture(0).get());
+
+            if (mTestingFrames.size())  onTestFrame();
+
+            // Capture video frame before UI is rendered
+            bool captureVideoUI = mVideoCapture.pUI && mVideoCapture.pUI->captureUI();  // Check capture mode here once only, as its value may change after renderGUI()
+            if (!captureVideoUI)
+            {
+                captureVideoFrame();
+            }
+
+            //Swaps back to backbuffer to render fps text and gui directly onto it
+            mpDefaultPipelineState->setFbo(pSwapChainFbo);
+            pCtx->setGraphicsState(mpDefaultPipelineState);
+            {
+                PROFILE("renderGUI");
                 renderGUI();
             }
-        }
 
-        renderText(getFpsMsg(), glm::vec2(10, 10));
-        if(mpPixelZoom)
-        {
-            mpPixelZoom->render(mpRenderContext.get(), gpDevice->getSwapChainFbo().get());
-        }
+            renderText(getFpsMsg(), glm::vec2(10, 10));
+            if (mpPixelZoom)
+            {
+                mpPixelZoom->render(pCtx, pSwapChainFbo.get());
+            }
 
-        captureVideoFrame();
-        printProfileData();
-        if (mCaptureScreen)
-        {
-            captureScreen();
-        }
+#if _PROFILING_ENABLED
+            Profiler::endFrame();
+#endif
+            // Capture video frame after UI is rendered
+            if (captureVideoUI)
+            {
+                captureVideoFrame();
+            }
 
-        if(gpDevice)
-        {
-            PROFILE(present);
-            gpDevice->present();
+            if (mCaptureScreen)
+            {
+                captureScreen();
+            }
+
+            {
+                PROFILE("present");
+                gpDevice->present();
+            }
         }
     }
 
@@ -407,7 +549,8 @@ namespace Falcor
         std::string pngFile;
         if (findAvailableFilename(filename, outputDirectory, "png", pngFile))
         {
-            Texture::SharedPtr pTexture = gpDevice->getSwapChainFbo()->getColorTexture(0);
+            Texture::SharedPtr pTexture;
+            pTexture = gpDevice->getSwapChainFbo()->getColorTexture(0);
             pTexture->captureToFile(0, 0, pngFile);
         }
         else
@@ -421,11 +564,16 @@ namespace Falcor
 
     void Sample::initUI()
     {
-        mpGui = Gui::create(mpDefaultFBO->getWidth(), mpDefaultFBO->getHeight());
+        float scaling = getDisplayScaleFactor();
+        const auto& pSwapChainFbo = gpDevice->getSwapChainFbo();
+        mpGui = Gui::create(uint32_t(pSwapChainFbo->getWidth()), uint32_t(pSwapChainFbo->getHeight()), scaling);
+        mpGui->addFont(kMonospaceFont, "Framework/Fonts/consolab.ttf");
+        mSampleGuiHeight = (uint32_t)(mSampleGuiHeight * scaling);
+        mSampleGuiWidth = (uint32_t)(mSampleGuiWidth * scaling);
         mpTextRenderer = TextRenderer::create();
     }
 
-    const std::string Sample::getFpsMsg() const
+    std::string Sample::getFpsMsg()
     {
         std::string s;
         if (mShowText)
@@ -439,60 +587,44 @@ namespace Falcor
         return s;
     }
 
-    void Sample::toggleText(bool enabled)
-    {
-        mShowText = enabled && gpDevice;
-    }
-
     void Sample::resizeSwapChain(uint32_t width, uint32_t height)
     {
         mpWindow->resize(width, height);
-        mpPixelZoom->onResizeSwapChain(gpDevice->getSwapChainFbo().get());
     }
 
-    bool Sample::isKeyPressed(const KeyboardEvent::Key& key) const
+    bool Sample::isKeyPressed(const KeyboardEvent::Key& key)
     {
         return mPressedKeys.find(key) != mPressedKeys.cend();
     }
 
-    void Sample::renderText(const std::string& msg, const glm::vec2& position, const glm::vec2 shadowOffset) const
+    void Sample::renderText(const std::string& msg, const glm::vec2& position, const glm::vec2 shadowOffset)
     {
         if (mShowText)
         {
+            RenderContext* pCtx = getRenderContext();
             // Render outline first
             if (shadowOffset.x != 0.f || shadowOffset.y != 0)
             {
                 const glm::vec3 oldColor = mpTextRenderer->getTextColor();
                 mpTextRenderer->setTextColor(glm::vec3(0.f));   // Black outline 
-                mpTextRenderer->begin(mpRenderContext, position + shadowOffset);
-                mpTextRenderer->renderLine(msg);
-                mpTextRenderer->end();
+                mpTextRenderer->begin(pCtx, position + shadowOffset);
+                mpTextRenderer->renderLine(pCtx, msg);
+                mpTextRenderer->end(pCtx);
                 mpTextRenderer->setTextColor(oldColor);
             }
-            mpTextRenderer->begin(mpRenderContext, position);
-            mpTextRenderer->renderLine(msg);
-            mpTextRenderer->end();
+            mpTextRenderer->begin(pCtx, position);
+            mpTextRenderer->renderLine(pCtx, msg);
+            mpTextRenderer->end(pCtx);
         }
-    }
-
-    void Sample::printProfileData()
-    {
-#if _PROFILING_ENABLED
-        if (gProfileEnabled)
-        {
-            std::string profileMsg;
-            Profiler::endFrame(profileMsg);
-            renderText(profileMsg, glm::vec2(10, 300));
-        }
-#endif
     }
 
     void Sample::initVideoCapture()
     {
         if (mVideoCapture.pUI == nullptr)
         {
-            mVideoCapture.pUI = VideoEncoderUI::create(20, 300, 240, 220, [this]() {startVideoCapture(); }, [this]() {endVideoCapture(); });
+            mVideoCapture.pUI = VideoEncoderUI::create(20, 300, 300, 280, [this]() {startVideoCapture(); }, [this]() {endVideoCapture(); });
         }
+        mVideoCapture.displayUI = true;
     }
 
     void Sample::startVideoCapture()
@@ -502,10 +634,11 @@ namespace Falcor
         desc.flipY = false;
         desc.codec = mVideoCapture.pUI->getCodec();
         desc.filename = mVideoCapture.pUI->getFilename();
-        desc.format = mpDefaultFBO->getColorTexture(0)->getFormat();
+        const auto& pSwapChainFbo = gpDevice->getSwapChainFbo();
+        desc.format = pSwapChainFbo->getColorTexture(0)->getFormat();
         desc.fps = mVideoCapture.pUI->getFPS();
-        desc.height = mpDefaultFBO->getHeight();
-        desc.width = mpDefaultFBO->getWidth();
+        desc.height = pSwapChainFbo->getHeight();
+        desc.width = pSwapChainFbo->getWidth();
         desc.bitrateMbps = mVideoCapture.pUI->getBitrate();
         desc.gopSize = mVideoCapture.pUI->getGopSize();
 
@@ -524,11 +657,9 @@ namespace Falcor
                 mFixedTimeDelta = -mFixedTimeDelta;
             }
             mCurrentTime = mVideoCapture.pUI->getStartTime();
-            if (!mVideoCapture.pUI->captureUI())
-            {
-                mShowUI = false;
-            }
         }
+
+        mShouldResetRendering = mVideoCapture.pUI->resetOnFirstFrame();
     }
  
     void Sample::endVideoCapture()
@@ -536,9 +667,10 @@ namespace Falcor
         if (mVideoCapture.pVideoCapture)
         {
             mVideoCapture.pVideoCapture->endCapture();
-            mShowUI = true;
+            mShowUI = UIStatus::ShowAll;
         }
-        mVideoCapture.pUI = nullptr;
+        mVideoCapture.pUI->setCaptureState(false);
+        mVideoCapture.displayUI = false;
         mVideoCapture.pVideoCapture = nullptr;
         safe_delete_array(mVideoCapture.pFrame);
         mFixedTimeDelta = mVideoCapture.sampleTimeDelta;
@@ -548,7 +680,7 @@ namespace Falcor
     {
         if (mVideoCapture.pVideoCapture)
         {
-            mVideoCapture.pVideoCapture->appendFrame(mpRenderContext->readTextureSubresource(mpDefaultFBO->getColorTexture(0).get(), 0).data());
+            mVideoCapture.pVideoCapture->appendFrame(getRenderContext()->readTextureSubresource(gpDevice->getSwapChainFbo()->getColorTexture(0).get(), 0).data());
 
             if (mVideoCapture.pUI->useTimeRange())
             {
@@ -564,21 +696,8 @@ namespace Falcor
                     endVideoCapture();
                 }
             }
+
+            mShouldResetRendering = false;
         }
-    }
-
-    void Sample::shutdownApp()
-    {
-        mpWindow->shutdown();
-    }
-
-    void Sample::pollForEvents()
-    {
-        mpWindow->pollForEvents();
-    }
-
-    void Sample::setWindowTitle(const std::string& title)
-    {
-        mpWindow->setWindowTitle(title);
     }
 }

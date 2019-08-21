@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <functional>
 #include "API/Window.h"
 
 namespace Falcor
@@ -51,13 +52,18 @@ namespace Falcor
     */
     int getDisplayDpi();
 
+    /** Get the requested display scale factor
+    */
+    float getDisplayScaleFactor();
+
     /** Type of message box to display
     */
     enum class MsgBoxType
     {
-        Ok,          ///< Single 'OK' button
-        RetryCancel, ///< Retry/Cancel buttons
-        OkCancel,    ///< OK/Cancel buttons
+        Ok,                 ///< Single 'OK' button
+        OkCancel,           ///< OK/Cancel buttons
+        RetryCancel,        ///< Retry/Cancel buttons
+        AbortRetryIgnore,   ///< Abort/Retry/Ignore buttons
     };
 
     /** Types of buttons
@@ -66,7 +72,9 @@ namespace Falcor
     {
         Ok,     ///< 'OK' Button
         Retry,  ///< Retry button
-        Cancel  ///< Cancel Button
+        Cancel, ///< Cancel Button
+        Abort,  ///< Abort Button
+        Ignore, ///< Ignore Button
     };
 
     /** Display a message box. By default, shows a message box with a single 'OK' button.
@@ -88,21 +96,30 @@ namespace Falcor
     */
     std::string stripDataDirectories(const std::string& filename);
 
+    /** Structure to help with file dialog file-extension filters
+    */
+    struct FileDialogFilter
+    {
+        FileDialogFilter(const std::string& ext_, const std::string& desc_ = {}) : ext(ext_), desc(desc_) {}
+        std::string desc;   // The description ("Portable Network Graphics")
+        std::string ext;    // The extension, without the `.` ("png")
+    };
+
+    using FileDialogFilterVec = std::vector<FileDialogFilter>;
+
     /** Creates a 'open file' dialog box.
-        \param[in] pFilters A string containing pairs of null terminating strings. The first string in each pair is the name of the filter, the second string in a pair is a semicolon separated list of file extensions
-                   (for example, "*.TXT;*.DOC;*.BAK"). The last pair in the filter list has to end with a 2 null characters.
+        \param[in] filters The file extensions filters
         \param[in] filename On successful return, the name of the file selected by the user.
         \return true if a file was selected, otherwise false (if the user clicked 'Cancel').
     */
-    bool openFileDialog(const char* pFilters, std::string& filename);
+    bool openFileDialog(const FileDialogFilterVec& filters, std::string& filename);
 
     /** Creates a 'save file' dialog box.
-        \param[in] pFilters A string containing pairs of null terminating strings. The first string in each pair is the name of the filter, the second string in a pair is a semicolon separated list of file extensions
-                   (for example, "*.TXT;*.DOC;*.BAK"). The last pair in the filter list has to end with a 2 null characters.
+        \param[in] filters The file extensions filters
         \param[in] filename On successful return, the name of the file selected by the user.
         \return true if a file was selected, otherwise false (if the user clicked 'Cancel').
     */
-    bool saveFileDialog(const char* pFilters, std::string& filename);
+    bool saveFileDialog(const FileDialogFilterVec& filters, std::string& filename);
 
     /** Checks if a file exists in the file system. This function doesn't look in the common directories.
         \param[in] filename The file to look for
@@ -116,14 +133,43 @@ namespace Falcor
     */
     bool isDirectoryExists(const std::string& filename);
     
+    /** Open watch thread for file changes and call callback when the file is written to.
+        \param[in] full path to the file to watch for changes
+        \param[in] callback function
+    */
+    void monitorFileUpdates(const std::string& filePath, const std::function<void()>& callback = {});
+
+    /** Close watch thread for file changes
+        \param[in] full path to the file that was being watched for changes
+    */
+    void closeSharedFile(const std::string& filePath);
+
+    /** Creates a file in the temperary directory and returns the path.
+        \return pathName Absolute path to unique temp file.  
+    */
+    std::string getTempFilename();
+
     /** Create a directory from path.
     */
     bool createDirectory(const std::string& path);
+
+    /** Given the app name and full command line arguments, begin the process
+    */
+    size_t executeProcess(const std::string& appName, const std::string& commandLineArgs);
+
+    /** Check if the given process is still active
+     */
+    bool isProcessRunning(size_t processID);
+
+    /** Terminate process
+     */
+    void terminateProcess(size_t processID);
 
     /** Get the current executable directory
         \return The full path of the application directory
     */
     const std::string& getExecutableDirectory();
+
     /** Get the current executable name
         \return The name of the executable
     */
@@ -144,17 +190,15 @@ namespace Falcor
     */
     const std::vector<std::string>& getDataDirectoriesList();
 
-    /** Read a file into a string. The function expects a full path to the file, and will not look in the common directories.
-        \param[in] fullpath The path to the requested file
-        \param[in] str On successful return, the content of the file
-        \return true if the was read successfully, false if an error occurred (usually file not found)
-    */
-    bool readFileToString(const std::string& fullpath, std::string& str);
-
     /** Adds a folder into the search directory. Once added, calls to FindFileInCommonDirs() will seach that directory as well
         \param[in] dir The new directory to add to the common directories.
     */
     void addDataDirectory(const std::string& dir);
+
+    /** Removes a folder from the search directories
+        \param[in] dir The directory name to remove from the common directories.
+    */
+    void removeDataDirectory(const std::string& dataDir);
 
     /** Find a new filename based on the supplied parameters. This function doesn't actually create the file, just find an available file name.
         \param[in] prefix Requested file prefix.
@@ -188,6 +232,12 @@ namespace Falcor
         \return Stripped directory path
     */
     std::string getDirectoryFromFile(const std::string& filename);
+
+    /** Get  extension tag from filename.
+        \param[in] filename File path to strip extension name from
+        \return Stripped extension name.
+    */
+    std::string getExtensionFromFile(const std::string& filename);
 
     /** Strip path from a full filename
         \param[in] filename File path
@@ -265,6 +315,22 @@ namespace Falcor
     /** Gets the number of set bits.
     */
     uint32_t popcount(uint32_t a);
+
+    /** Load the content of a file into a string
+    */
+    std::string readFile(const std::string& filename);
+
+    /** Load a shared-library
+    */
+    DllHandle loadDll(const std::string& libPath);
+
+    /** Release a shared-library
+    */
+    void releaseDll(DllHandle dll);
+
+    /** Get a function pointer from a library
+    */
+    void* getDllProcAddress(DllHandle dll, const std::string& funcName);
 
     /*! @} */
 };

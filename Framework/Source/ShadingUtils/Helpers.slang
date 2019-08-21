@@ -25,111 +25,304 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-
-#ifndef _FALCOR_SHADING_HELPERS_H_
-#define _FALCOR_SHADING_HELPERS_H_
-
-// Make sure we get the macros like `_fn` and `_ref`
-// TODO: just eliminate these since we know this is pure Slang.
+#ifndef _FALCOR_HELPERS_SLANG_
+#define _FALCOR_HELPERS_SLANG_
 #include "HostDeviceData.h"
 
 /*******************************************************************
-					Sampling functions
+    Spherical map sampling
+*******************************************************************/
+float2 dirToSphericalCrd(float3 direction)
+{
+    float3 p = normalize(direction);
+    float2 uv;
+    uv.x = (1 + atan2(-p.z, p.x) / M_PI) * 0.5;
+    uv.y = acos(p.y) / M_PI;
+    return uv;
+}
+
+float3 sphericalCrdToDir(float2 uv)
+{
+    float phi = M_PI * uv.y;
+    float theta = M_PI2 * uv.x - (M_PI / 2.0f);
+
+    float3 dir;
+    dir.x = sin(phi) * sin(theta);
+    dir.y = cos(phi);
+    dir.z = sin(phi) * cos(theta);
+
+    return normalize(dir);
+}
+
+/*******************************************************************
+    Sample Patterns
 *******************************************************************/
 
-static const float M_PIf = 3.14159265359f;
-static const float M_1_PIf = 0.31830988618379f;
-
-_fn float2 sample_disk(float rnd1, float rnd2, float minRSq = 0.0f)
+float radicalInverse(uint i)
 {
-    float2 p;
-    float r = sqrt(max(minRSq, rnd1));
-    float phi = 2.0f * M_PIf * rnd2;
-    p.x = r * cos(phi);
-    p.y = r * sin(phi);
-    return p;
+    i = (i & 0x55555555) << 1 | (i & 0xAAAAAAAA) >> 1;
+    i = (i & 0x33333333) << 2 | (i & 0xCCCCCCCC) >> 2;
+    i = (i & 0x0F0F0F0F) << 4 | (i & 0xF0F0F0F0) >> 4;
+    i = (i & 0x00FF00FF) << 8 | (i & 0xFF00FF00) >> 8;
+    i = (i << 16) | (i >> 16);
+    return float(i) * 2.3283064365386963e-10f;
 }
 
-_fn float3 sample_gauss(float rnd1, float rnd2)
+float2 getHammersley(uint i, uint N)
 {
-    float3 p;
-    float r = sqrt(-2.f * log(1.f - rnd1));
-    float phi = 2.0f * M_PIf * rnd2;
-    p.x = r * cos(phi);
-    p.y = r * sin(phi);
-    p.z = 0.0f;
-    return p;
+    return float2(float(i) / float(N), radicalInverse(i));
 }
 
-_fn inline float eval_gauss2_1d(float x2)
+// Utility function to get a vector perpendicular to an input vector 
+//    (from "Efficient Construction of Perpendicular Vectors Without Branching")
+float3 getPerpendicularStark(float3 u)
 {
-    return exp(-.5f * x2) / sqrt(2.0f * M_PIf);
-}
-_fn inline float eval_gauss2_2d(float x2)
-{
-    return exp(-.5f * x2) / (2.0f * M_PIf);
-}
-_fn inline float eval_gauss2_3d(float x2)
-{
-    return exp(-.5f * x2) / pow(2.0f * M_PIf, 1.5f);
-}
-// "band limit" (k sigma in frequency space): k / (2pi sigma)
-_fn inline float eval_gauss_1d(float x)
-{
-    return eval_gauss2_1d(x * x);
-}
-_fn inline float eval_gauss_2d(float3 x)
-{
-    return eval_gauss2_2d(x.x * x.x + x.y * x.y);
-}
-_fn inline float eval_gauss_3d(float3 x)
-{
-    return eval_gauss2_3d(x.x * x.x + x.y * x.y + x.z * x.z);
+    float3 a = abs(u);
+    uint xm = ((a.x - a.y) < 0 && (a.x - a.z) < 0) ? 1 : 0;
+    uint ym = (a.y - a.z) < 0 ? (1 ^ xm) : 0;
+    uint zm = 1 ^ (xm | ym);
+    return cross(u, float3(xm, ym, zm));
 }
 
-// [0, 2] -> [1, 0]
-// "band limit" (1st root in frequency space): 1/2
-// Therefore x = t / step =F=> limit = 1/2 / step = 1/2 f_sampling
-_fn inline float eval_cos2_wnd(float x)
+float3 getPerpendicularSimple(float3 u)
 {
-    float c = abs(x) < 2.0f ? cos((M_PIf * 0.25f) * x) : 0.0f;
-    return c * c;
+    float3 up = abs(u.z) < 0.999999f ? float3(0, 0, 1) : float3(1, 0, 0);
+    return normalize(cross(up, u));
 }
 
-_fn float3 cosine_sample_hemisphere(float rnd1, float rnd2)
-{
-    float3 p;
-    p.xy = sample_disk(rnd1, rnd2);
-    // Project up to hemisphere.
-    p.z = sqrt(max(0.0f, 1.0f - p.x * p.x - p.y * p.y));
-    return p;
-}
+/** Get a cosine-weighted random vector centered around a specified normal direction.
 
-_fn float3 uniform_sample_sphere(float rnd1, float rnd2)
-{
-    float3 p;
-    p.z = 2.0f * rnd1 - 1.0f;
-    float r = sqrt(max(0.0f, 1.0f - p.z * p.z));
-    float phi = 2.0f * M_PIf * rnd2;
-    p.x = r * cos(phi);
-    p.y = r * sin(phi);
-    return p;
-}
-
-_fn float3 uniform_sample_hemisphere(float rnd1, float rnd2)
-{
-    float3 p;
-    p.z = rnd1;
-    float r = sqrt(max(0.0f, 1.0f - p.z * p.z));
-    float phi = 2.0f * M_PIf * rnd2;
-    p.x = r * cos(phi);
-    p.y = r * sin(phi);
-    return p;
-}
-/**
-	Random numbers based on Mersenne Twister
+    \param[in] u Uniformly distributed random numbers between 0 and 1
+    \param[in] N Surface normal
+    \param[in] T A vector perpendicular to N
 */
-_fn uint rand_init(uint val0, uint val1, uint backoff = 16)
+float3 getCosHemisphereSample(float2 u, float3 N, float3 T)
+{
+    float3 B = normalize(cross(N, T));
+
+    float r = sqrt(u.x);
+    float phi = u.y * M_PI2;
+
+    float3 L = float3(r * cos(phi),
+                    r * sin(phi),
+                    sqrt(max(0.0f, 1.0f - u.x)));
+
+    return normalize(T * L.x + B * L.y + N * L.z);
+}
+
+/** Get a GGX half vector / microfacet normal, sampled according to the GGX distribution
+    When using this function to sample, the probability density is pdf = D * NdotH / (4 * HdotV)
+
+    \param[in] u Uniformly distributed random numbers between 0 and 1
+    \param[in] N Surface normal
+    \param[in] roughness Roughness^2 of material
+*/
+float3 getGGXMicrofacet(float2 u, float3 N, float roughness)
+{
+    float a2 = roughness * roughness;
+
+    float phi = M_PI2 * u.x;
+    float cosTheta = sqrt(max(0, (1 - u.y)) / (1 + (a2 * a2 - 1) * u.y));
+    float sinTheta = sqrt(max(0, 1 - cosTheta * cosTheta));
+
+    // Tangent space H
+    float3 tH;
+    tH.x = sinTheta * cos(phi);
+    tH.y = sinTheta * sin(phi);
+    tH.z = cosTheta;
+
+    float3 T = getPerpendicularStark(N);
+    float3 B = normalize(cross(N, T));
+
+    // World space H
+    return normalize(T * tH.x + B * tH.y + N * tH.z);
+}
+
+/*******************************************************************
+    Other
+*******************************************************************/
+
+bool intersectRaySphere(float3 rayPos, float3 rayDir, float3 spherePos, float sphereRadius, out float3 intersectionPos)
+{
+    float3 m = rayPos - spherePos;
+    float b = dot(m, rayDir);
+    float c = dot(m, m) - (sphereRadius * sphereRadius);
+
+    // If ray origin is outside sphere (c > 0) and ray is pointing away from sphere (b > 0)
+    // For now assume input always produces valid intersection
+    // if(c > 0.0f && b > 0.0f) return false;
+
+    float discr = b * b - c;
+    // Negative discriminant means ray missed sphere
+    // if(discr < 0.0f) return false;
+
+    float t = -b - sqrt(discr);
+
+    // t will be negative if origin is inside sphere, 
+    // take the abs since we want the position on the sphere's surface
+    intersectionPos = rayPos + abs(t) * rayDir;
+
+    return true;
+}
+
+float4 applyAmbientOcclusion(float4 color, Texture2D aoTex, SamplerState s, float2 texC)
+{
+    float aoFactor = aoTex.SampleLevel(s, texC, 0).r;
+    return float4(color.rgb * aoFactor, color.a);
+}
+
+float getMetallic(float diffuse, float spec)
+{
+    // This is based on the way that UE4 and Substance Painter 2 converts base+metallness+specular level to diffuse/spec colors
+    // We don't have the specular level information, so the assumption is that it is equal to 0.5 (based on the UE4 documentation)
+    float a = 0.04;
+    float b = spec + diffuse - 0.08;
+    float c = 0.04 - spec;
+    float root = sqrt(b*b - 0.16*c);
+    float m = (root - b) * 12.5;
+    return m;
+}
+
+/*******************************************************************
+                    Alpha test
+*******************************************************************/
+// Evaluate alpha test and return true if point should be discarded
+bool evalBasicAlphaTest(float alpha, float threshold)
+{
+    return alpha < threshold;
+}
+
+/*******************************************************************
+                    Hashed Alpha Test
+*******************************************************************/
+// Evaluate alpha test and return true if point should be discarded
+bool evalHashedAlphaTest(float alpha, float materialThreshold, float hashedThreshold)
+{
+    float compareTo = hashedThreshold <= 0 ? materialThreshold : saturate(hashedThreshold);
+    return alpha < compareTo;
+}
+
+float sineHash(float2 p)
+{
+    return frac(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));
+}
+
+float sineHash3D(float3 p)
+{
+    return sineHash(float2(sineHash(p.xy), p.z));
+}
+
+float calculateHashedAlpha(float3 hashInputCoord, float hashScale, bool useAnisotropy)
+{
+    // Provide a decent default to our alpha threshold
+    float alphaCompare = 0.5f;
+
+    if (useAnisotropy)
+    {
+        //////  Anisotropic version
+
+        // Find the discretized derivatives of our coordinates
+        float3 anisoDeriv = max(abs(ddx(hashInputCoord)), abs(ddy(hashInputCoord)));
+        float3 anisoScales = float3(0.707f / (hashScale * anisoDeriv.x),
+                                0.707f / (hashScale * anisoDeriv.y),
+                                0.707f / (hashScale * anisoDeriv.z));
+        // Find log-discretized noise scales
+        float3 scaleFlr = float3(exp2(floor(log2(anisoScales.x))),
+                                exp2(floor(log2(anisoScales.y))),
+                                exp2(floor(log2(anisoScales.z))));
+        float3 scaleCeil = float3(exp2(ceil(log2(anisoScales.x))),
+                                exp2(ceil(log2(anisoScales.y))),
+                                exp2(ceil(log2(anisoScales.z))));
+
+        // Compute alpha thresholds at our two noise scales
+        float2 alpha = float2(sineHash3D(floor(scaleFlr * hashInputCoord)),
+                            sineHash3D(floor(scaleCeil * hashInputCoord)));
+
+        // Factor to linearly interpolate with
+        float3 fractLoc = float3(frac(log2(anisoScales.x)),
+                                frac(log2(anisoScales.y)),
+                                frac(log2(anisoScales.z)));
+
+        float2 toCorners = float2(length(fractLoc),
+                                length(float3(1.0f, 1.0f, 1.0f) - fractLoc));
+        float lerpFactor = toCorners.x / (toCorners.x + toCorners.y);
+
+        // Interpolate alpha threshold from noise at two scales
+        float x = (1 - lerpFactor) * alpha.x + lerpFactor * alpha.y;
+
+        // Pass into CDF to compute uniformly distrib threshold
+        float a = min(lerpFactor, 1 - lerpFactor);
+        float3 cases = float3(x * x / (2 * a * (1 - a)), (x - 0.5 * a) / (1 - a), 1.0 - ((1 - x) * (1 - x) / (2 * a * (1 - a))));
+
+        // Find our final, uniformly distributed alpha threshold
+        alphaCompare = (x < (1 - a)) ? ((x < a) ? cases.x : cases.y) : cases.z;
+        alphaCompare = clamp(alphaCompare, 1.0e-6, 1.0f);
+    }
+    else
+    {
+        //////  Isotropic version
+
+        // Find the discretized derivatives of our coordinates
+        float maxDeriv = max(length(ddx(hashInputCoord)), length(ddy(hashInputCoord)));
+        float pixScale = 1.0 / (hashScale * maxDeriv);
+
+        // Find two nearest log-discretized noise scales
+        float2 pixScales = float2(exp2(floor(log2(pixScale))), exp2(ceil(log2(pixScale))));
+
+        // Compute alpha thresholds at our two noise scales
+        float2 alpha = float2(sineHash3D(floor(pixScales.x * hashInputCoord)), sineHash3D(floor(pixScales.y * hashInputCoord)));
+
+        // Factor to interpolate lerp with
+        float lerpFactor = frac(log2(pixScale));
+
+        // Interpolate alpha threshold from noise at two scales
+        float x = (1 - lerpFactor) * alpha.x + lerpFactor * alpha.y;
+        float a = min(lerpFactor, 1 - lerpFactor);
+
+        // Pass into CDF to compute uniformly distrib threshold
+        float3 cases = float3(x * x / (2 * a * (1 - a)), (x - 0.5 * a) / (1 - a), 1.0 - ((1 - x) * (1 - x) / (2 * a * (1 - a))));
+
+        // Find our final, uniformly distributed alpha threshold
+        alphaCompare = (x < (1 - a)) ? ((x < a) ? cases.x : cases.y) : cases.z;
+        alphaCompare = clamp(alphaCompare, 1e-6f, 1.0f);
+    }
+
+    return alphaCompare;
+}
+
+/*******************************************************************
+    Alpha test
+*******************************************************************/    
+
+/** Evaluates alpha test, returning true if pixel should be discarded.
+    \todo calculateHashedAlpha requires ddx/ddy, so cannot be used in RT mode.
+*/
+bool evalAlphaTest(uint matFlags, float alpha, float threshold, float3 posW)
+{
+    if (EXTRACT_ALPHA_MODE(matFlags) != AlphaModeMask) return false;
+
+    float hashedAlphaScale = 1.0f;
+#ifdef _HASHED_ALPHA_SCALE
+    hashedAlphaScale = _HASHED_ALPHA_SCALE;
+#endif
+
+    /* Evaluate alpha test material modifier */
+#ifdef _DEFAULT_ALPHA_TEST
+    return evalBasicAlphaTest(alpha, threshold);
+#elif defined(_HASHED_ALPHA_TEST_ANISOTROPIC)
+    float hashedThreshold = calculateHashedAlpha(posW, hashedAlphaScale, true);
+    return evalHashedAlphaTest(alpha, threshold, hashedThreshold);
+#else
+    // Default to isotropic hashed alpha test
+    float hashedThreshold = calculateHashedAlpha(posW, hashedAlphaScale, false);
+    return evalHashedAlphaTest(alpha, threshold, hashedThreshold);
+#endif
+}
+
+/*******************************************************************
+   	Random numbers based on Mersenne Twister
+*******************************************************************/  
+uint rand_init(uint val0, uint val1, uint backoff = 16)
 {
     uint v0 = val0;
     uint v1 = val1;
@@ -145,354 +338,11 @@ _fn uint rand_init(uint val0, uint val1, uint backoff = 16)
     return v0;
 }
 
-_fn float rand_next(_ref(uint) s)
+float rand_next(inout uint s)
 {
     uint LCG_A = 1664525u;
     uint LCG_C = 1013904223u;
     s = (LCG_A * s + LCG_C);
     return float(s & 0x00FFFFFF) / float(0x01000000);
 }
-
-/*******************************************************************
-					Shading routines
-*******************************************************************/
-
-// Ideal specular refraction
-_fn float3 refract(float3 I, float3 N, float eta)
-{
-    float dNI = dot(N, I);
-    float k = 1.0f - eta * eta * (1.0f - dNI * dNI);
-    float3 R;
-    if (k < 0.0f) 
-    {
-        R = float3(0.0f, 0.0f, 0.0f);
-    }
-    else 
-    {
-        R = eta * I - (eta * dNI + sqrt(k)) * N;
-    }
-    return R;
-}
-
-/*******************************************************************
-					Geometric routines
-*******************************************************************/
-
-void _fn createTangentFrame(float3 normal, _ref(float3) bitangent)
-{
-	if(abs(normal.x) > abs(normal.y))
-		bitangent = float3(normal.z, 0.f, -normal.x) / length(float2(normal.x, normal.z));
-	else
-		bitangent = float3(0.f, normal.z, -normal.y) / length(float2(normal.y, normal.z));
-}
-
-void _fn reflectFrame(float3 n, float3 reflect, _ref(float3) t, _ref(float3) b)
-{
-    if(abs(dot(n, reflect)) > 0.999f)
-        reflect = abs(n.z) < .8f ? float3(0.f, 0.f, 1.f) : float3(1.f, 0.f, 0.f);
-    b = normalize(cross(n, reflect));
-    t = cross(b, n);
-}
-
-/*******************************************************************
-					Texturing routines
-*******************************************************************/
-
-float4 _fn sampleTexture(Texture2D t, SamplerState s, ShadingAttribs attr)
-{
-#ifndef _MS_USER_DERIVATIVES
-    return t.SampleBias(s, attr.UV, attr.lodBias);
-#else
-	return t.SampleGrad(s, attr.UV, attr.DPDX, attr.DPDY);
-#endif
-}
-
-float4 _fn sampleTexture(Texture2DArray t, SamplerState s, ShadingAttribs attr, int arrayIndex)
-{
-#ifndef _MS_USER_DERIVATIVES
-    return t.SampleBias(s, float3(attr.UV, arrayIndex), attr.lodBias);
-#else
-    return t.SampleGrad(s, float3(attr.UV, arrayIndex), attr.DPDX, attr.DPDY);
-#endif
-}
-
-float4 _fn evalTex(in uint32_t hasTexture, Texture2D tex, SamplerState s, ShadingAttribs attr, in float4 defaultValue)
-{
-#ifndef _MS_DISABLE_TEXTURES
-	if(hasTexture != 0)
-    {
-        // MAT_CODE
-        defaultValue = sampleTexture(tex, s, attr);
-    }
-#endif
-	return defaultValue;
-}
-
-float4 _fn evalWithColor(in uint32_t hasTexture, Texture2D tex, SamplerState s, float4 color, ShadingAttribs attr)
-{
-	return evalTex(hasTexture, tex, s, attr, color);
-}
-
-/*******************************************************************
-					Normal mapping
-*******************************************************************/
-
-float3 _fn normalToRGB(float3 normal)
-{
-	return normal * 0.5f + 0.5f;
-}
-
-float3 _fn RGBToNormal(float3 rgbval)
-{
-    return rgbval * 2.f - 1.f;
-}
-
-float3 _fn fromLocal(in float3 v, in float3 t, in float3 b, in float3 n)
-{
-    return t * v.x + b * v.y + n * v.z;
-}
-
-float3 _fn toLocal(in float3 v, in float3 t, in float3 b, in float3 n)
-{
-    return float3(dot(v, t), dot(v, b), dot(v, n));
-}
-
-void _fn applyNormalMap(in float3 texValue, _ref(float3) n, _ref(float3) t, _ref(float3) b)
-{
-	float3 normalMap = normalize(texValue);
-	n = fromLocal(normalMap, normalize(t), normalize(b), normalize(n));
-    // Orthogonalize tangent frame
-    b = normalize(b - n * dot(b, n));
-    t = normalize(cross(b, n));
-}
-
-#ifndef _MS_LEAN_MAPPING
-void _fn perturbNormal(MaterialData mat, _ref(ShadingAttribs) attr, bool forceSample)
-{
-	if(forceSample || mat.desc.hasNormalMap != 0)
-	{
-		float3 texValue = sampleTexture(mat.textures.normalMap, mat.samplerState, attr).rgb;
-        applyNormalMap(RGBToNormal(texValue), attr.N, attr.T, attr.B);
-	}
-}
-#else
-void applyLeanMap(in Texture2D leanMap, in SamplerState samplerState, inout ShadingAttribs shAttr)
-{
-    float4 t = sampleTexture(leanMap, samplerState, shAttr);
-    // Reconstruct B 
-    float2 B = 2 * t.xy - 1;
-    float2 M = t.zw;
-
-    // Apply normal
-    float3 unnormalizedNormal = float3(B, 1);
-    applyNormalMap(unnormalizedNormal, shAttr.N, shAttr.T, shAttr.B);
-    // Reconstruct the diagonal covariance matrix
-    float2 maxCov = max((0), M - B*B);     // Use only diagonal of covariance due to float2 aniso roughness
-
-    [unroll]
-    for (uint iLayer = 0; iLayer < MatMaxLayers; iLayer++)
-    {
-        if (shAttr.preparedMat.desc.layers[iLayer].type == MatNone) break;
-
-        if (shAttr.preparedMat.desc.layers[iLayer].type != MatLambert)
-        {
-            float2 roughness = shAttr.preparedMat.values.layers[iLayer].roughness.xy;
-            roughness = sqrt(roughness*roughness + maxCov); // Approximate convolution that works for all
-            shAttr.preparedMat.values.layers[iLayer].roughness.rg = roughness;
-        }
-    }
-}
-
-void perturbNormal(MaterialData mat, inout ShadingAttribs shAttr, bool forceSample)
-{
-    if (mat.desc.hasNormalMap != 0)
-    {
-        applyLeanMap(gLeanMaps[mat.values.id], gLeanMapSampler, shAttr);
-    }
-}
-#endif
-
-// Note: explicit overload instead of default argument, at least until cross-compiler can handle defaults
-void _fn perturbNormal(MaterialData mat, _ref(ShadingAttribs) attr)
-{
-	perturbNormal(mat, attr, false);
-}
-
-
-/*******************************************************************
-					Alpha test
-*******************************************************************/
-
-bool _fn alphaTestEnabled(MaterialData mat)
-{
-    return mat.desc.hasAlphaMap != 0;
-}
-
-bool _fn alphaTestPassed(MaterialData mat, ShadingAttribs attr)
-{
-#ifndef _MS_DISABLE_ALPHA_TEST
-    if(sampleTexture(mat.textures.alphaMap, mat.samplerState, attr).x < mat.values.alphaThreshold)
-        return false;
-#endif
-    return true;
-}
-
-void _fn basicAlphaTest(MaterialData mat, ShadingAttribs attr)
-{
-#ifndef _MS_DISABLE_ALPHA_TEST
-    if(alphaTestEnabled(mat))
-    {
-        if(!alphaTestPassed(mat, attr))
-            discard;
-    }
-#endif
-}
-
-/*******************************************************************
-                    Hashed Alpha Test
-*******************************************************************/
-
-bool _fn hashedAlphaTestPassed(MaterialData mat, ShadingAttribs attr, float alphaThreshold)
-{
-    float compareTo = alphaThreshold <= 0 ? mat.values.alphaThreshold : clamp(alphaThreshold, 0.0f, 1.0f);
-#ifndef _MS_DISABLE_ALPHA_TEST
-    if (sampleTexture(mat.textures.alphaMap, mat.samplerState, attr).x < compareTo)
-        return false;
-#endif
-    return true;
-}
-
-void _fn applyHashedAlphaTest(MaterialData mat, ShadingAttribs attr, float alphaThreshold)
-{
-#ifndef _MS_DISABLE_ALPHA_TEST
-    if (alphaTestEnabled(mat))
-    {
-        if (!hashedAlphaTestPassed(mat, attr, alphaThreshold))
-            discard;
-    }
-#endif
-}
-
-inline float _fn sineHash(float2 p)
-{
-    return frac(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));
-}
-
-inline float _fn sineHash3D(float3 p)
-{
-    return sineHash(float2(sineHash(p.xy), p.z));
-}
-
-float _fn calculateHashedAlpha(float3 hashInputCoord, float hashScale, bool useAnisotropy)
-{
-    // Provide a decent default to our alpha threshold
-    float alphaCompare = 0.5f;
-
-    if (useAnisotropy)
-    {
-        //////  Anisotropic version
-
-        // Find the discretized derivatives of our coordinates
-        float3 anisoDeriv = max(abs(ddx(hashInputCoord)), abs(ddy(hashInputCoord)));
-        float3 anisoScales = float3(0.707f / (hashScale * anisoDeriv.x),
-                                    0.707f / (hashScale * anisoDeriv.y),
-                                    0.707f / (hashScale * anisoDeriv.z));
-        // Find log-discretized noise scales
-        float3 scaleFlr = float3(exp2(floor(log2(anisoScales.x))),
-                                 exp2(floor(log2(anisoScales.y))),
-                                 exp2(floor(log2(anisoScales.z))));
-        float3 scaleCeil = float3(exp2(ceil(log2(anisoScales.x))),
-                                  exp2(ceil(log2(anisoScales.y))),
-                                  exp2(ceil(log2(anisoScales.z))));
-        // Compute alpha thresholds at our two noise scales
-        float2 alpha = float2(sineHash3D(floor(scaleFlr * hashInputCoord)),
-                              sineHash3D(floor(scaleCeil * hashInputCoord)));
-        // Factor to linearly interpolate with
-        float3 fractLoc = float3(frac(log2(anisoScales.x)),
-                                 frac(log2(anisoScales.y)),
-                                 frac(log2(anisoScales.z)));
-        float2 toCorners = float2(length(fractLoc), 
-                                  length(float3(1.0f, 1.0f, 1.0f) - fractLoc));
-        float lerpFactor = toCorners.x / (toCorners.x + toCorners.y);
-        // Interpolate alpha threshold from noise at two scales
-        float x = (1 - lerpFactor) * alpha.x + lerpFactor * alpha.y;
-        // Pass into CDF to compute uniformly distrib threshold
-        float a = min(lerpFactor, 1 - lerpFactor);
-        float3 cases = float3(x * x / (2 * a * (1 - a)), (x - 0.5 * a) / (1 - a), 1.0 - ((1 - x) * (1 - x) / (2 * a * (1 - a))));
-        // Find our final, uniformly distributed alpha threshold
-        alphaCompare = (x < (1 - a)) ? ((x < a) ? cases.x : cases.y) : cases.z;
-        alphaCompare = clamp(alphaCompare, 1.0e-6, 1.0f);
-    }
-    else
-    {
-        //////  Isotropic version
-
-        // Find the discretized derivatives of our coordinates
-        float maxDeriv = max(length(ddx(hashInputCoord)), length(ddy(hashInputCoord)));
-        float pixScale = 1.0 / (hashScale * maxDeriv);
-        // Find two nearest log-discretized noise scales
-        float2 pixScales = float2(exp2(floor(log2(pixScale))), exp2(ceil(log2(pixScale))));
-        // Compute alpha thresholds at our two noise scales
-        float2 alpha = float2(sineHash3D(floor(pixScales.x * hashInputCoord)), sineHash3D(floor(pixScales.y * hashInputCoord)));
-        // Factor to interpolate lerp with
-        float lerpFactor = frac(log2(pixScale));
-        // Interpolate alpha threshold from noise at two scales
-        float x = (1 - lerpFactor) * alpha.x + lerpFactor * alpha.y;
-        float a = min(lerpFactor, 1 - lerpFactor);
-        // Pass into CDF to compute uniformly distrib threshold
-        float3 cases = float3(x * x / (2 * a * (1 - a)), (x - 0.5 * a) / (1 - a), 1.0 - ((1 - x) * (1 - x) / (2 * a * (1 - a))));
-        // Find our final, uniformly distributed alpha threshold
-        alphaCompare = (x < (1 - a)) ? ((x < a) ? cases.x : cases.y) : cases.z;
-        alphaCompare = clamp(alphaCompare, 1e-6f, 1.0f);
-    }
-
-    return alphaCompare;
-}
-
-/*******************************************************************
-    alpha test
-*******************************************************************/    
-void _fn applyAlphaTest(MaterialData material, ShadingAttribs shAttr, float3 posW)
-{
-    float hashedAlphaScale = 1.0f;
-#ifdef _HASHED_ALPHA_SCALE
-    hashedAlphaScale = _HASHED_ALPHA_SCALE;
-#endif
-
-    /* Evaluate alpha test material modifier */
-#ifdef _DEFAULT_ALPHA_TEST
-    basicAlphaTest(material, shAttr);
-#elif defined(_HASHED_ALPHA_TEST_ANISOTROPIC)
-    float alphaThreshold = calculateHashedAlpha(posW, hashedAlphaScale, true);
-    applyHashedAlphaTest(material, shAttr, alphaThreshold);
-#else
-    // Default to isotropic hashed alpha test
-    float alphaThreshold = calculateHashedAlpha(posW, hashedAlphaScale, false);
-    applyHashedAlphaTest(material, shAttr, alphaThreshold);
-#endif
-}
-
-/*******************************************************************
-    Spherical map sampling
-*******************************************************************/
-float2 dirToSphericalCrd(float3 direction)
-{
-    static const float PI = 3.14159265f;
-    float3 p = normalize(direction);
-    float2 uv;
-    uv.x = (1 + atan2(-p.z, p.x) / PI) * 0.5;
-    uv.y = 1 - (-acos(p.y) / PI);
-    return uv;
-}
-
-/*******************************************************************
-					Color conversion
-*******************************************************************/
-
-float4 _fn applyAmbientOcclusion(float4 color, Texture2D aoTex, SamplerState s, float2 texC)
-{
-    float aoFactor = aoTex.SampleLevel(s, texC, 0).r;
-    return float4(color.rgb * aoFactor, color.a);
-}
-
-#endif	// _FALCOR_SHADING_HELPERS_H_
+#endif //_FALCOR_HELPERS_SLANG_

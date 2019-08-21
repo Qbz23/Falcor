@@ -29,23 +29,17 @@
 #include "ParallelReduction.h"
 #include "Graphics/FboHelper.h"
 #include "API/RenderContext.h"
-#include "glm/vec2.hpp"
 #include <cstring>
 
 namespace Falcor
 {
     const char* fsFilename = "Framework/Shaders/ParallelReduction.ps.slang";
 
-    static struct  
-    {
-        ProgramReflection::BindLocation inputSrv;
-        ProgramReflection::BindLocation sampler;
-    } gBindLocations;
-
-    ParallelReduction::ParallelReduction(ParallelReduction::Type reductionType, uint32_t readbackLatency, uint32_t width, uint32_t height) : mReductionType(reductionType)
+    ParallelReduction::ParallelReduction(ParallelReduction::Type reductionType, uint32_t readbackLatency, uint32_t width, uint32_t height, uint32_t sampleCount) : mReductionType(reductionType)
     {
         ResourceFormat texFormat;
         Program::DefineList defines;
+        defines.add("_SAMPLE_COUNT", std::to_string(sampleCount));
         defines.add("_TILE_SIZE", std::to_string(kTileSize));
         switch(reductionType)
         {
@@ -62,17 +56,17 @@ namespace Falcor
         samplerDesc.setAddressingMode(Sampler::AddressMode::Clamp, Sampler::AddressMode::Clamp, Sampler::AddressMode::Clamp).setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point).setLodParams(0, 0, 0);
         mpPointSampler = Sampler::create(samplerDesc);
 
-        mpResultFbo.resize(readbackLatency + 1);
-        for(auto& pFbo : mpResultFbo)
+        mResultData.resize(readbackLatency + 1);
+        for(auto& res : mResultData)
         {
             Fbo::Desc fboDesc;
             fboDesc.setColorTarget(0, texFormat);
-            pFbo = FboHelper::create2D(1, 1, fboDesc);
+            res.pFbo = FboHelper::create2D(1, 1, fboDesc);
         }
         mpFirstIterProg = FullScreenPass::create(fsFilename, defines);
         mpFirstIterProg->getProgram()->addDefine("_FIRST_ITERATION");
         mpRestIterProg = FullScreenPass::create(fsFilename, defines);
-        pVars = GraphicsVars::create(mpFirstIterProg->getProgram()->getActiveVersion()->getReflector());
+        mpVars = GraphicsVars::create(mpFirstIterProg->getProgram()->getReflector());
 
         // Calculate the number of reduction passes
         if(width > kTileSize || height > kTileSize)
@@ -90,26 +84,19 @@ namespace Falcor
                 mpTmpResultFbo.push_back(FboHelper::create2D(width, height, fboDesc));
             }
         }
-
-        if (gBindLocations.inputSrv.rangeIndex == ProgramReflection::BindLocation::kInvalidLocation)
-        {
-            const auto& pDefaultBlock = mpFirstIterProg->getProgram()->getActiveVersion()->getReflector()->getDefaultParameterBlock();
-            gBindLocations.inputSrv = pDefaultBlock->getResourceBinding("gInputTex");
-            gBindLocations.sampler = pDefaultBlock->getResourceBinding("gSampler");
-        }
     }
 
-    ParallelReduction::UniquePtr ParallelReduction::create(Type reductionType, uint32_t readbackLatency, uint32_t width, uint32_t height)
+    ParallelReduction::UniquePtr ParallelReduction::create(Type reductionType, uint32_t readbackLatency, uint32_t width, uint32_t height, uint32_t sampleCount)
     {
-        return ParallelReduction::UniquePtr(new ParallelReduction(reductionType, readbackLatency, width, height));
+        return ParallelReduction::UniquePtr(new ParallelReduction(reductionType, readbackLatency, width, height, sampleCount));
     }
 
     void runProgram(RenderContext* pRenderCtx, Texture::SharedPtr pInput, const FullScreenPass* pProgram, Fbo::SharedPtr pDst, GraphicsVars::SharedPtr pVars, Sampler::SharedPtr pPointSampler)
     {
         GraphicsState::SharedPtr pState = pRenderCtx->getGraphicsState();
         auto pDefaultBlock = pVars->getDefaultBlock().get();
-        pDefaultBlock->setSrv(gBindLocations.inputSrv, 0, pInput->getSRV());
-        pDefaultBlock->setSampler(gBindLocations.sampler, 0, pPointSampler);
+        pDefaultBlock->setTexture("gInputTex", pInput);
+        pDefaultBlock->setSampler("gSampler", pPointSampler);
 
         //Set draw params
         pState->pushFbo(pDst);
@@ -129,25 +116,29 @@ namespace Falcor
 
         for(size_t i = 0; i < mpTmpResultFbo.size(); i++)
         {
-            runProgram(pRenderCtx, pInput, pProgram, mpTmpResultFbo[i], pVars, mpPointSampler);
+            runProgram(pRenderCtx, pInput, pProgram, mpTmpResultFbo[i], mpVars, mpPointSampler);
             pProgram = mpRestIterProg.get();
             pInput = mpTmpResultFbo[i]->getColorTexture(0);
         }
 
-        runProgram(pRenderCtx, pInput, pProgram, mpResultFbo[mCurFbo], pVars, mpPointSampler);
-
+        runProgram(pRenderCtx, pInput, pProgram, mResultData[mCurFbo].pFbo, mpVars, mpPointSampler);
+        mResultData[mCurFbo].pReadTask = pRenderCtx->asyncReadTextureSubresource(mResultData[mCurFbo].pFbo->getColorTexture(0).get(), 0);
         // Read back the results
-        mCurFbo = (mCurFbo + 1) % mpResultFbo.size();
-        auto texData = pRenderCtx->readTextureSubresource(mpResultFbo[mCurFbo]->getColorTexture(0).get(), 0);
-
+        mCurFbo = (mCurFbo + 1) % mResultData.size();
         glm::vec4 result(0);
-        switch(mReductionType)
+        if(mResultData[mCurFbo].pReadTask)
         {
-        case Type::MinMax:
-            result = vec4(*reinterpret_cast<vec2*>(texData.data()), 0, 0);
-            break;
-        default:
-            should_not_get_here();
+            auto texData = mResultData[mCurFbo].pReadTask->getData();
+            mResultData[mCurFbo].pReadTask = nullptr;
+
+            switch (mReductionType)
+            {
+            case Type::MinMax:
+                result = vec4(*reinterpret_cast<vec2*>(texData.data()), 0, 0);
+                break;
+            default:
+                should_not_get_here();
+            }
         }
         return result;
     }

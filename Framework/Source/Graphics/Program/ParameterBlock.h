@@ -46,7 +46,8 @@ namespace Falcor
         {
         public:
             SharedPtrT() : std::shared_ptr<T>() {}
-            SharedPtrT(T* pParamBlock) : std::shared_ptr<T>(pParamBlock) {}
+            explicit SharedPtrT(T* pParamBlock) : std::shared_ptr<T>(pParamBlock) {}
+            constexpr SharedPtrT(nullptr_t) : std::shared_ptr<T>(nullptr) {}
             SharedPtrT(const std::shared_ptr<ParameterBlock>& other) : std::shared_ptr<T>(other) {}
             ConstantBuffer::SharedPtr operator[](const std::string& cbName) const { return std::shared_ptr<T>::get()->getConstantBuffer(cbName); }
             ConstantBuffer::SharedPtr operator[](uint32_t index) = delete; // No set by index. This is here because if we didn't explicitly delete it, the compiler will try to convert to int into a string, resulting in runtime error
@@ -93,6 +94,11 @@ namespace Falcor
             \return If the indices is valid, a shared pointer to the buffer. Otherwise returns nullptr
         */
         ConstantBuffer::SharedPtr getConstantBuffer(const BindLocation& bindLocation, uint32_t arrayIndex) const;
+
+        /** Get the default constant-buffer
+            The default constant-buffer has the same name as the parameter-block, so this call is equivalent to `getConstantBuffer(getReflection()->getName())`
+        */
+        ConstantBuffer::SharedPtr getDefaultConstantBuffer() const;
 
         /** Set a raw-buffer. Based on the shader reflection, it will be bound as either an SRV or a UAV
             \param[in] name The name of the buffer
@@ -201,6 +207,7 @@ namespace Falcor
         ParameterBlockReflection::SharedConstPtr getReflection() const { return mpReflector; }
 
         /** Prepare the block for draw. This call updates the descriptor-sets
+            \return Returns true if successful, false otherwise
         */
         bool prepareForDraw(CopyContext* pContext);
        

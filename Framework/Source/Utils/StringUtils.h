@@ -121,6 +121,26 @@ namespace Falcor
         return vec;
     }
 
+    /** Join an array of strings separated by another set string
+        \param[in] strings Array of strings to join.
+        \param[in] separator String placed between each string to be joined.
+        \return Joined string.
+    */
+    inline std::string joinStrings(const std::vector<std::string>& strings, const std::string& separator)
+    {
+        std::string result;
+        for(auto it = strings.begin(); it != strings.end(); it++)
+        {
+            result += *it;
+
+            if(it != strings.end() - 1)
+            {
+                result += separator;
+            }
+        }
+        return result;
+    }
+
     /** Remove leading whitespaces (space, tab, newline, carriage-return)
         \param[in] str String to operate on
         \return String with leading whitespaces removed.
@@ -184,8 +204,8 @@ namespace Falcor
     */
     inline bool parseArrayIndex(const std::string& name, std::string& nonArray, uint32_t& index)
     {
-        size_t dot = name.find_last_of(".");
-        size_t bracket = name.find_last_of("[");
+        size_t dot = name.find_last_of('.');
+        size_t bracket = name.find_last_of('[');
 
         if(bracket != std::string::npos)
         {

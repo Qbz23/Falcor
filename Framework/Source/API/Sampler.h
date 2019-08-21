@@ -60,18 +60,7 @@ namespace Falcor
 
         /** Comparison mode for the sampler.
         */
-        enum class ComparisonMode
-        {
-            Disabled,           ///< No comparison. Regular filtering.
-            LessEqual,          ///< Passes if source is less than or equal to the destination
-            GreaterEqual,       ///< Passes if source is greater than or equal to the destination
-            Less,               ///< Passes if source is less than the destination
-            Greater,            ///< Passes if source is greater than to the destination
-            Equal,              ///< Passes if source is equal to the destination
-            NotEqual,           ///< Passes if source is not equal to the destination
-            Always,             ///< Comparison always passes
-            Never,              ///< Comparison always fails
-        };
+        using ComparisonMode = ComparisonFunc;
 
         /** Descriptor used to create a new Sampler object
         */
@@ -137,7 +126,7 @@ namespace Falcor
 
         /** Get the API handle
         */
-        ApiHandle getApiHandle() const { return mApiHandle; }
+        const ApiHandle& getApiHandle() const { return mApiHandle; }
 
         /** Get the magnification filter
         */
@@ -187,6 +176,10 @@ namespace Falcor
         */
         const glm::vec4& getBorderColor() const { return mDesc.mBorderColor; }
 
+        /** Get the descriptor that was used to create the sampler.
+        */
+        const Desc& getDesc() const { return mDesc; }
+
         /** Get an object that represents a default sampler
         */
         static Sampler::SharedPtr getDefault();
@@ -196,7 +189,39 @@ namespace Falcor
         Desc mDesc;
         ApiHandle mApiHandle = {};
         static uint32_t getApiMaxAnisotropy();
-        static Sampler::SharedPtr spDefaultSampler;
-        static uint32_t sObjectCount;
     };
+
+    struct SamplerData
+    {
+        uint32_t objectCount = 0;
+        Sampler::SharedPtr pDefaultSampler;
+    };
+    dlldecl SamplerData gSamplerData;
+
+#define filter_str(a) case Sampler::Filter::a: return #a
+    inline std::string to_string(Sampler::Filter f)
+    {
+        switch (f)
+        {
+            filter_str(Point);
+            filter_str(Linear);
+        default: should_not_get_here(); return "";
+        }
+    }
+#undef filter_str
+
+#define address_str(a) case Sampler::AddressMode::a: return #a
+    inline std::string to_string(Sampler::AddressMode a)
+    {
+        switch (a)
+        {
+            address_str(Wrap);
+            address_str(Mirror);
+            address_str(Clamp);
+            address_str(Border);
+            address_str(MirrorOnce);
+        default: should_not_get_here(); return "";
+        }
+    }
+#undef address_str
 }

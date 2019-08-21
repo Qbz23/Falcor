@@ -30,6 +30,8 @@
 #include "SceneImporter.h"
 #include "glm/gtx/euler_angles.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "Utils/Gui.h"
+#include "Graphics/TextureHelper.h"
 
 namespace Falcor
 {
@@ -37,11 +39,11 @@ namespace Falcor
 
     const Scene::UserVariable Scene::kInvalidVar;
 
-    const char* Scene::kFileFormatString = "Scene files\0*.fscene\0\0";
+    const FileDialogFilterVec Scene::kFileExtensionFilters = { {"fscene", "Falcor Scene Files"} };
 
     Scene::SharedPtr Scene::loadFromFile(const std::string& filename, Model::LoadFlags modelLoadFlags, Scene::LoadFlags sceneLoadFlags)
     {
-        Scene::SharedPtr pScene = create();
+        Scene::SharedPtr pScene = create(filename);
         if (SceneImporter::loadScene(*pScene, filename, modelLoadFlags, sceneLoadFlags) == false)
         {
             pScene = nullptr;
@@ -49,18 +51,15 @@ namespace Falcor
         return pScene;
     }
 
-    Scene::SharedPtr Scene::create()
+    Scene::SharedPtr Scene::create(const std::string& filename)
     {
-        return SharedPtr(new Scene());
+        return SharedPtr(new Scene(filename));
     }
 
-    Scene::Scene()
-        : mId(sSceneCounter++)
+    Scene::Scene(const std::string& filename) : mId(sSceneCounter++), mFilename(filename)
     {
         // Reset all global id counters recursively
         Model::resetGlobalIdCounter();
-
-        mpMaterialHistory = MaterialHistory::create();
     }
 
     Scene::~Scene() = default;
@@ -71,47 +70,35 @@ namespace Falcor
         {
             mExtentsDirty = false;
 
-            mRadius = 0.f;
-            float k = 0.f;
-            mCenter = vec3(0, 0, 0);
+            BoundingBox sceneAABB;
+            bool first = true;
             for (uint32_t i = 0; i < getModelCount(); ++i)
             {
-                const auto& model = getModel(i);
-                const float r = model->getRadius();
-                const vec3 c = model->getCenter();
                 for (uint32_t j = 0; j < getModelInstanceCount(i); ++j)
                 {
-                    const auto& inst = getModelInstance(i, j);
-                    const vec3 instC = vec3(vec4(c, 1.f) * inst->getTransformMatrix());
-                    const vec3 scaling = inst->getScaling();
-                    const float instR = r * max(scaling.x, max(scaling.y, scaling.z));
-
-                    if (k == 0.f)
+                    const auto& pInst = getModelInstance(i, j);
+                    if (first)
                     {
-                        mCenter = instC;
-                        mRadius = instR;
+                        sceneAABB = pInst->getBoundingBox();
+                        first = false;
                     }
                     else
                     {
-                        vec3 dir = instC - mCenter;
-                        if (length(dir) > 1e-6f)
-                            dir = normalize(dir);
-                        vec3 a = mCenter - dir * mRadius;
-                        vec3 b = instC + dir * instR;
-
-                        mCenter = (a + b) * 0.5f;
-                        mRadius = length(a - b);
+                        sceneAABB = BoundingBox::fromUnion(sceneAABB, pInst->getBoundingBox());
                     }
-                    k++;
                 }
             }
 
+            mCenter = sceneAABB.center;
+            mRadius = length(sceneAABB.extent);
+            mBoundingBox = sceneAABB;
+
             // Update light extents
-            for (auto& light : mpLights)
+            for (auto& pLight : mpLights)
             {
-                if (light->getType() == LightDirectional)
+                if (pLight->getType() == LightDirectional)
                 {
-                    auto pDirLight = std::dynamic_pointer_cast<DirectionalLight>(light);
+                    auto pDirLight = std::dynamic_pointer_cast<DirectionalLight>(pLight);
                     pDirLight->setWorldParams(getCenter(), getRadius());
                 }
             }
@@ -131,10 +118,18 @@ namespace Falcor
 
         for (uint32_t i = 0; i < mModels.size(); i++)
         {
-            mModels[i][0]->getObject()->animate(currentTime);
+            if (mModels[i][0]->getObject()->animate(currentTime))
+            {
+                changed = true;
+            }
         }
 
         mExtentsDirty = mExtentsDirty || changed;
+
+        if (getCameraCount() > 0)
+        {
+            getActiveCamera()->beginFrame();
+        }
 
         // Ignore the elapsed time we got from the user. This will allow camera movement in cases where the time is frozen
         if (cameraController)
@@ -149,14 +144,8 @@ namespace Falcor
 
     void Scene::deleteModel(uint32_t modelID)
     {
-        if (mpMaterialHistory != nullptr)
-        {
-            mpMaterialHistory->onModelRemoved(getModel(modelID).get());
-        }
-
         // Delete entire vector of instances
         mModels.erase(mModels.begin() + modelID);
-
         mExtentsDirty = true;
     }
 
@@ -252,6 +241,12 @@ namespace Falcor
 
     uint32_t Scene::addLight(const Light::SharedPtr& pLight)
     {
+        if (pLight->getType() == LightArea)
+        {
+            logWarning("Use Scene::addAreaLight() for area lights.");
+            return uint32(-1);
+        }
+
         mpLights.push_back(pLight);
         mExtentsDirty = true;
         return (uint32_t)mpLights.size() - 1;
@@ -263,19 +258,26 @@ namespace Falcor
         mExtentsDirty = true;
     }
 
-    void Scene::deleteMaterial(uint32_t materialID)
+    uint32_t Scene::addLightProbe(const LightProbe::SharedPtr& pLightProbe)
     {
-        if (mpMaterialHistory != nullptr)
-        {
-            mpMaterialHistory->onMaterialRemoved(getMaterial(materialID).get());
-        }
-
-        mpMaterials.erase(mpMaterials.begin() + materialID);
+        mpLightProbes.push_back(pLightProbe);
+        return (uint32_t)mpLightProbes.size() - 1;
     }
 
-    void Scene::deleteMaterialHistory()
+    void Scene::deleteLightProbe(uint32_t lightID)
     {
-        mpMaterialHistory = nullptr;
+        mpLightProbes.erase(mpLightProbes.begin() + lightID);
+    }
+
+    uint32_t Scene::addAreaLight(const AreaLight::SharedPtr& pAreaLight)
+    {
+        mpAreaLights.push_back(pAreaLight);
+        return (uint32_t)mpAreaLights.size() - 1;
+    }
+
+    void Scene::deleteAreaLight(uint32_t lightID)
+    {
+        mpAreaLights.erase(mpAreaLights.begin() + lightID);
     }
 
     uint32_t Scene::addPath(const ObjectPath::SharedPtr& pPath)
@@ -317,7 +319,6 @@ namespace Falcor
         merge(mModels);
         merge(mpLights);
         merge(mpPaths);
-        merge(mpMaterials);
         merge(mCameras);
 #undef merge
         mUserVars.insert(pFrom->mUserVars.begin(), pFrom->mUserVars.end());
@@ -327,7 +328,7 @@ namespace Falcor
     void Scene::createAreaLights()
     {
         // Clean up area light(s) before adding
-        deleteAreaLights();
+        mpAreaLights.clear();
 
         // Go through all models in the scene
         for (uint32_t modelId = 0; modelId < getModelCount(); ++modelId)
@@ -335,47 +336,106 @@ namespace Falcor
             const Model::SharedPtr& pModel = getModel(modelId);
             if (pModel)
             {
-                // Retrieve model instances for this model
-                for (uint32_t modelInstanceId = 0; modelInstanceId < getModelInstanceCount(modelId); ++modelInstanceId)
-                {
-                    // #TODO This should probably create per model instance
-                    AreaLight::createAreaLightsForModel(pModel, mpLights);
-                }
+                // TODO: Create area lights per model instance
+                std::vector<AreaLight::SharedPtr> areaLights = createAreaLightsForModel(pModel.get());
+                mpAreaLights.insert(mpAreaLights.end(), areaLights.begin(), areaLights.end());
             }
         }
     }
 
-    void Scene::deleteAreaLights()
-    {
-        // Clean up the list before adding
-        std::vector<Light::SharedPtr>::iterator it = mpLights.begin();
-
-        for (; it != mpLights.end();)
-        {
-            if ((*it)->getType() == LightArea)
-            {
-                it = mpLights.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-    }
-
-    void Scene::bindSamplerToMaterials(Sampler::SharedPtr pSampler)
-    {
-        for (auto& pMat : mpMaterials)
-        {
-            pMat->setSampler(pSampler);
-        }
-    }
-
-    void Scene::bindSamplerToModels(Sampler::SharedPtr pSampler)
+    void Scene::bindSampler(Sampler::SharedPtr pSampler)
     {
         for (auto& model : mModels)
         {
             model[0]->getObject()->bindSamplerToMaterials(pSampler);
+        }
+
+        for (auto& probe : mpLightProbes)
+        {
+            probe->setSampler(pSampler);
+        }
+    }
+
+    void Scene::attachSkinningCacheToModels(SkinningCache::SharedPtr pSkinningCache)
+    {
+        for (auto& model : mModels)
+        {
+            model[0]->getObject()->attachSkinningCache(pSkinningCache);
+        }
+    }
+
+    void Scene::setCamerasAspectRatio(float ratio)
+    {
+        for (auto& c : mCameras) c->setAspectRatio(ratio);
+    }
+
+    void detachCameraFromPaths(const Camera::SharedPtr& pCamera, const std::vector<ObjectPath::SharedPtr>& paths)
+    {
+        for (auto& pPath : paths) pPath->detachObject(pCamera);
+    }
+
+    void Scene::renderUI(Gui* pGui, const char* uiGroup)
+    {
+        if (uiGroup == nullptr || pGui->beginGroup(uiGroup))
+        {
+
+            pGui->addFloatVar("Scene Unit", mSceneUnit, 0);
+            pGui->addTooltip("Scene unit in meters");
+
+            // Cameras (active, speed
+            if (pGui->beginGroup("Cameras"))
+            {
+                pGui->addIntVar("Active Camera", (int32_t&)mActiveCameraID, 0, (int32_t)mCameras.size() - 1);
+
+                if(mpPaths.size())
+                {
+                    pGui->addSeparator();
+                    pGui->addText("Camera Paths");
+                    if (pGui->addButton("Detach")) detachCameraFromPaths(mCameras[mActiveCameraID], mpPaths);
+                    pGui->addTooltip("Detach the active camera from every path it is attached to");
+                    if (pGui->addButton("Attach To", true)) mpPaths[mSelectedPath]->attachObject(mCameras[mActiveCameraID]);
+                    pGui->addIntVar("##SelectedPath", (int32_t&)mSelectedPath, 0, (int32_t)mpPaths.size() - 1, 1, true);
+                    pGui->addSeparator();
+                }
+
+                pGui->addFloatVar("Camera Speed", mCameraSpeed, 0);
+                mCameras[mActiveCameraID]->renderUI(pGui);
+                pGui->endGroup();
+            }
+
+            if (pGui->beginGroup("Lights"))
+            {
+                uint32_t i = 0;
+                auto lightUI = [&i, pGui](auto& lightVec)
+                {
+                    for (auto& pLight : lightVec)
+                    {
+                        std::string label = light_type_string(pLight->getType()) + std::to_string(i++);
+                        pLight->renderUI(pGui, label.c_str());
+                    }
+                };
+                lightUI(mpLights);
+                lightUI(mpAreaLights);
+
+                for (auto& pLight : mpLightProbes)
+                {
+                    std::string label = "LightProbe" + std::to_string(i++);
+                    pLight->renderUI(pGui, label.c_str());
+                }
+
+                if (pGui->addButton("Load EnvMap"))
+                {
+                    std::string filename;
+                    if (openFileDialog(Bitmap::getFileDialogFilters(), filename))
+                    {
+                        Texture::SharedPtr pEnvMap = createTextureFromFile(filename, false, true);
+                        if (pEnvMap) setEnvironmentMap(pEnvMap);
+                    }
+                }
+
+                pGui->endGroup();
+            }
+            if (uiGroup) pGui->endGroup();
         }
     }
 }

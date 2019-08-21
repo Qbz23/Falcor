@@ -44,6 +44,14 @@ namespace Falcor
         return pAllocator;
     }
 
+    template<typename ApiType>
+    ApiType createCommandList(ID3D12Device* pDevice, D3D12_COMMAND_LIST_TYPE type, CommandAllocatorHandle allocator)
+    {
+        ApiType pList;
+        HRESULT hr = pDevice->CreateCommandList(0, type, allocator, nullptr, IID_PPV_ARGS(&pList));
+        return (FAILED(hr)) ? nullptr : pList;
+    }
+
     LowLevelContextData::SharedPtr LowLevelContextData::create(CommandQueueType type, CommandQueueHandle queue)
     {
         SharedPtr pThis = SharedPtr(new LowLevelContextData);
@@ -69,13 +77,7 @@ namespace Falcor
         }
         pThis->mpAllocator = pThis->mpApiData->pAllocatorPool->newObject();
 
-        // Create a command list
-        ID3D12Device* pDevice = gpDevice->getApiHandle().GetInterfacePtr();
-        if (FAILED(pDevice->CreateCommandList(0, cmdListType, pThis->mpAllocator, nullptr, IID_PPV_ARGS(&pThis->mpList))))
-        {
-            logError("Failed to create command list for LowLevelContextData");
-            return nullptr;
-        }
+        d3d_call(gpDevice->getApiHandle()->CreateCommandList(0, cmdListType, pThis->mpAllocator, nullptr, IID_PPV_ARGS(&pThis->mpList)));
         return pThis;
     }
 
@@ -84,21 +86,14 @@ namespace Falcor
         safe_delete(mpApiData);
     }
 
-    void LowLevelContextData::reset()
-    {
-        mpFence->gpuSignal(mpQueue);
-        mpAllocator = mpApiData->pAllocatorPool->newObject();
-        d3d_call(mpList->Close());
-        d3d_call(mpAllocator->Reset());
-        d3d_call(mpList->Reset(mpAllocator, nullptr));
-    }
-
     void LowLevelContextData::flush()
     {
         d3d_call(mpList->Close());
         ID3D12CommandList* pList = mpList.GetInterfacePtr();
         mpQueue->ExecuteCommandLists(1, &pList);
         mpFence->gpuSignal(mpQueue);
-        mpList->Reset(mpAllocator, nullptr);
+        mpAllocator = mpApiData->pAllocatorPool->newObject();
+        d3d_call(mpAllocator->Reset());
+        d3d_call(mpList->Reset(mpAllocator, nullptr));
     }
 }

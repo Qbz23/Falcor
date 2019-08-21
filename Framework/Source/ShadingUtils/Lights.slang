@@ -25,231 +25,220 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-
-#ifndef _FALCOR_LIGHTS_H_
-#define _FALCOR_LIGHTS_H_
-
+#ifndef _FALCOR_LIGHTS_SLANG_
+#define _FALCOR_LIGHTS_SLANG_
+#include "HostDeviceData.h"
+__import ShaderCommon;
 __import Helpers;
 
-// Make sure we get the macros like `_fn` and `_ref`
-// TODO: just eliminate these since we know this is pure Slang.
-#include "HostDeviceData.h"
-
-/*******************************************************************
-                    Lights
-*******************************************************************/
-
-/**
-This stores the information about the current light source at the shading point.
-This includes a direction from a shading point towards the light,
-radiance emitted from the light souce, which is *received* at the shading point.
-*/
-struct LightAttribs
+struct LightSample
 {
-    float3	L;				///< Normalized direction to the light at shading hit
-    float   shadowFactor;   ///< Shadow factor
-    float3	lightIntensity;	///< Radiance of the emitted light at shading hit
-
-    float3    P;              ///< Sampled point on the light source
-    float3    N;              ///< Normal of the sampled point on the light source
-    float   pdf;            ///< Probability density function of sampling the light source
-
-    float3    points[4];
+    float3 diffuse;   // The light intensity at the surface location used for the diffuse term
+    float3 specular;  // The light intensity at the surface location used for the specular term. For light probes, the diffuse and specular components are different
+    float3 L;         // The direction from the surface to the light source
+    float3 posW;      // The world-space position of the light
+    float NdotH;      // Unclamped, can be negative
+    float NdotL;      // Unclamped, can be negative
+    float LdotH;      // Unclamped, can be negative
+    float distance;   // Distance from the light-source to the surface
 };
 
-/**
-    This routine computes the position of the the light based on the point 'shadingPosition'.
-*/
-inline float3 _fn getLightPos(LightData Light, float3 shadingPosition)
+void calcCommonLightProperties(ShadingData sd, inout LightSample ls)
 {
-    float3 lightPos = Light.worldPos;
-    if(Light.type == LightArea)
-    {
-        lightPos = mul(float4(lightPos, 1.0), Light.transMat).xyz;
-    }    
-    else if(Light.type == LightDirectional)
-    {
-        float dist = length(shadingPosition - lightPos);
-        lightPos = shadingPosition - Light.worldDir * dist;
-    }
-    return lightPos;
+    float3 H = normalize(sd.V + ls.L);
+    ls.NdotH = saturate(dot(sd.N, H));
+    ls.NdotL = saturate(dot(sd.N, ls.L));
+    ls.LdotH = saturate(dot(ls.L, H));
+};
+
+float getDistanceFalloff(float distSquared)
+{
+    float falloff = 1 / ((0.01 * 0.01) + distSquared); // The 0.01 is to avoid infs when the light source is close to the shading point
+    return falloff;
 }
 
-/**
-    This routine computes the radiance from the light at the point 'shadingPosition'.
+/** Evaluate a directional light source intensity/direction at a shading point
 */
-inline float3 _fn getLightRadiance(LightData Light, float3 shadingPosition)
+LightSample evalDirectionalLight(in LightData light, in float3 surfacePosW)
 {
-    float3 lightRadiance = Light.intensity;
-    if(Light.type == LightPoint || Light.type == LightArea)
-    {
-        // TODO: add point on the light for area lights
-        float3 lightDir = shadingPosition - getLightPos(Light, shadingPosition);
-        lightRadiance *= 1.0f / (4.0f * M_PIf);    // per steradian
-        lightRadiance /= dot(lightDir, lightDir);        // per square meter
-    }
-    return lightRadiance;
+    LightSample ls;
+    ls.diffuse = light.intensity;
+    ls.specular = light.intensity;
+    ls.L = -normalize(light.dirW);
+    float dist = length(surfacePosW - light.posW);
+    ls.posW = surfacePosW - light.dirW * dist;
+    return ls;
 }
 
-/**
-    This routine prepares attributes for shading a point with a particular light source.
-    The outputs are an incident radiance towards the shading point 
-    and the direction from the shading point towards the light source.
+/** Evaluate a point light source intensity/direction at a shading point
 */
-inline void _fn prepareLightAttribs(LightData Light, ShadingAttribs ShAttr, float shadowFactor, _ref(LightAttribs) LightAttr)
+LightSample evalPointLight(in LightData light, in float3 surfacePosW)
 {
-    /* Evaluate direction to the light */
-    LightAttr.P = getLightPos(Light, ShAttr.P);
-    LightAttr.pdf = 0;
-    LightAttr.N = 0;
-    LightAttr.shadowFactor = shadowFactor;
+    LightSample ls;
+    ls.posW = light.posW;
+    ls.L = light.posW - surfacePosW;
+    // Avoid NaN
+    float distSquared = dot(ls.L, ls.L);
+    ls.distance = (distSquared > 1e-5f) ? length(ls.L) : 0;
+    ls.L = (distSquared > 1e-5f) ? normalize(ls.L) : 0;
 
-    [unroll]
-    for(uint i = 0 ; i < 4 ; i++)
+    // Calculate the falloff
+    float falloff = getDistanceFalloff(distSquared);
+
+    // Calculate the falloff for spot-lights
+    float cosTheta = -dot(ls.L, light.dirW); // cos of angle of light orientation
+    if(cosTheta < light.cosOpeningAngle)
     {
-        LightAttr.points[i] = 0;
+        falloff = 0;
     }
-    float3 PosToLight = LightAttr.P - ShAttr.P;
-    if(dot(PosToLight, PosToLight) > 1e-3f)
+    else if(light.penumbraAngle > 0)
     {
-        LightAttr.L = normalize(PosToLight);
+        float deltaAngle = light.openingAngle - acos(cosTheta);
+        falloff *= saturate((deltaAngle - light.penumbraAngle) / light.penumbraAngle);
+    }
+    ls.diffuse = light.intensity * falloff;
+    ls.specular = ls.diffuse;
+    return ls;
+}
+
+/** Evaluate a area light source intensity/direction at a shading point
+*/
+LightSample evalAreaLight(in AreaLightData light, in float3 surfacePosW)
+{
+    LightSample ls;
+    ls.posW = mul(float4(light.posW, 1.0), light.transMat).xyz;
+    ls.L = light.posW - surfacePosW;
+    float distSquared = dot(ls.L, ls.L);
+    ls.distance = (distSquared > 1e-5f) ? length(ls.L) : 0;
+    ls.L = (distSquared > 1e-5f) ? normalize(ls.L) : 0;
+
+    // Calculate the falloff
+    float cosTheta = -dot(ls.L, light.dirW); // cos of angle of light orientation
+    float falloff = max(0.f, cosTheta) * light.surfaceArea;
+    falloff *= getDistanceFalloff(distSquared);
+    ls.diffuse = falloff * light.intensity;
+    ls.specular = ls.diffuse;
+    return ls;
+}
+
+float linearRoughnessToLod(float linearRoughness, float mipCount)
+{
+    return sqrt(linearRoughness) * (mipCount - 1);
+}
+
+/** Evaluate a light source intensity/direction at a shading point
+*/
+LightSample evalLight(LightData light, ShadingData sd)
+{
+    LightSample ls;
+    if(light.type == LightDirectional) ls = evalDirectionalLight(light, sd.posW);
+    else if(light.type == LightPoint)  ls = evalPointLight(light, sd.posW);
+    calcCommonLightProperties(sd, ls);
+    return ls;
+};
+
+float3 getDiffuseDominantDir(float3 N, float3 V, float roughness)
+{
+    float a = 1.02341 * roughness - 1.51174;
+    float b = -0.511705 * roughness + 0.755868;
+    float factor = saturate((saturate(dot(N, V)) * a + b) * roughness);
+    return normalize(lerp(N, V, factor));
+}
+
+float3 getSpecularDominantDir(float3 N, float3 R, float roughness)
+{
+    float smoothness = 1 - roughness;
+    float factor = smoothness * (sqrt(smoothness) + roughness);
+    return normalize(lerp(N, R, factor));
+}
+
+float3 evalLightProbeDiffuse(LightProbeData probe, ShadingData sd)
+{
+    float3 N = getDiffuseDominantDir(sd.N, sd.V, sd.roughness);
+
+    // Interpret negative radius as global light probe with infinite distance
+    // Otherwise simulate the light probe as covering a finite spherical area
+    float2 uv;
+    if(probe.radius < 0.0f)
+    {
+        uv = dirToSphericalCrd(N);
     }
     else
     {
-        LightAttr.L = 0;
+        float3 intersectPosW;
+        intersectRaySphere(sd.posW, N, probe.posW, probe.radius, intersectPosW);
+        uv = dirToSphericalCrd(normalize(intersectPosW - probe.posW));
     }
-    LightAttr.lightIntensity = Light.intensity;
-    if(Light.type == LightDirectional)
-    {
-        LightAttr.L = -Light.worldDir;
-    }
-    else if(Light.type == LightArea || Light.type == LightPoint)
-    {
-        /* Evaluate various attenuation factors: cosine, 1/r^2, etc. */
-        float Atten = 1.f;
 
-        float cosTheta = -dot(LightAttr.L, Light.worldDir);	// cos of angle of light orientation with outgoing direction
-        if(Light.type == LightArea)			// Cosine attenuation
-        {
-            Atten = max(0.f, cosTheta) * Light.surfaceArea;
-        }
-        else if(Light.type == LightPoint)
-        {
-            // Spot light cone angle
-            if(cosTheta < Light.cosOpeningAngle)
-                Atten = 0.f;
-            if(Light.penumbraAngle > 0.f)	// Compute cone attenuation of a spot light
-            {
-                float deltaAngle = Light.openingAngle - acos(cosTheta);
-                Atten *= clamp((deltaAngle - Light.penumbraAngle) / Light.penumbraAngle, 0.f, 1.f);
-            }
-        }
+    float width, height, mipCount;
+    probe.resources.diffuseTexture.GetDimensions(0, width, height, mipCount);
 
-        // Quadratic attenuation
-        Atten /= max(1e-3f, dot(PosToLight, PosToLight));
+    float3 diffuseLighting = probe.resources.diffuseTexture.SampleLevel(probe.resources.sampler, uv, 0).rgb;
+    float preintegratedDisneyBRDF = gProbeShared.dfgTexture.SampleLevel(gProbeShared.dfgSampler, float2(sd.NdotV, sd.roughness), 0).z;
 
-        LightAttr.lightIntensity *= Atten;
-    }
-    // DISABLED_FOR_D3D12
-#if 0
-    if (Light.type == LightArea)
-    {
-        for (int index = 0; index < 4; index++)
-        {
-            // Access the geometry buffers
-            float* vertices = (float*)(Light.vertexPtr.ptr);
-            // Get vertices pointed by the corresponding index
-            float3 p0 = float3(vertices[index * 3 + 0], vertices[index * 3 + 1], vertices[index * 3 + 2]);
-
-            // Apply model instance transformation matrix
-            LightAttr.points[index] = float3(mul(float4(p0, 1.0), Light.transMat));
-        }
-    }
-#endif
+    return diffuseLighting * preintegratedDisneyBRDF * sd.diffuse.rgb;
 }
 
-/**
-    This routine samples the light source.
-*/
-void _fn sampleLight(float3 shadingHitPos, LightData lData, float3 rSample, _ref(LightAttribs) lAttr)
+float3 evalLightProbeSpecular(LightProbeData probe, ShadingData sd, float3 L)
 {
-    // Sample the light based on its type: point, directional, or area
-    switch (lData.type)
+    float dfgWidth, dfgHeight;
+    gProbeShared.dfgTexture.GetDimensions(dfgWidth, dfgHeight);
+
+    float width, height, mipCount;
+    probe.resources.specularTexture.GetDimensions(0, width, height, mipCount);
+
+    float3 dominantDir = getSpecularDominantDir(sd.N, L, sd.roughness);
+    float mipLevel = linearRoughnessToLod(sd.roughness, mipCount);
+
+    float2 uv;
+    if (probe.radius < 0.0f)
     {
-        case LightPoint:
-        {
-            // Get the position
-            lAttr.P = getLightPos(lData, shadingHitPos);
-
-            float3 PosToLight = lAttr.P - shadingHitPos;
-            float lDist = length(PosToLight);
-            lAttr.L = PosToLight / max(1e-3f, lDist);
-
-            // For point light, its normal is always along the L direction
-            lAttr.N = lAttr.L;
-
-            // Compute the intensity and the PDF
-            lAttr.lightIntensity = getLightRadiance(lData, shadingHitPos);
-            lAttr.pdf = 1.f;
-        }
-        break;
-
-        case LightDirectional:
-        {
-            // Get the position
-            lAttr.P = getLightPos(lData, shadingHitPos);
-            lAttr.L = -lData.worldDir;
-
-            // For directional light, its normal is always along the L direction
-            lAttr.N = lAttr.L;
-            
-            // Compute the intensity and the PDF
-            lAttr.lightIntensity = lData.intensity;
-            lAttr.pdf = 1.f;
-        }
-        break;
+        uv = dirToSphericalCrd(dominantDir);
     }
-}
-
-/**
-This routine samples a rectangular area light source in a stratified way.
-*/
-void _fn stratifiedSampleRectangularAreaLight(float3 shadingHitPos, LightData lData, float2 rSample, int x, int y, int numStrataX, int numStrataY, _ref(LightAttribs) lAttr)
-{
-    if (lData.type != LightArea)
-        return;
-
-    // Transform light position and light normal
-    float3 lightPos = mul(float4(lData.worldPos, 1.0f), lData.transMat).rgb;
-    lAttr.N = mul(float4(lData.worldDir, 0.0f), lData.transMat).rgb;
-
-    // Transform tangent frame
-    float3 transformedTangent = mul(float4(lData.tangent, 0.0f), lData.transMat).rgb;
-    float3 transformedBitangent = mul(float4(lData.bitangent, 0.0f), lData.transMat).rgb;
-
-    float lightSizeY1 = length(transformedTangent);
-    float lightSizeY2 = length(transformedBitangent);
-
-    // Generate stratified samples
-    float y1 = ((x + rSample.x) / float(numStrataX) - 0.5f) * lightSizeY1;
-    float y2 = ((y + rSample.y) / float(numStrataY) - 0.5f) * lightSizeY2;
-
-    lAttr.P = lightPos + y1 * normalize(transformedTangent) + y2 * normalize(transformedBitangent);
-
-    float3 PosToLight = lAttr.P - shadingHitPos;
-    float lDist = length(PosToLight);
-    lAttr.L = PosToLight / max(1e-3f, lDist);
-
-    lAttr.lightIntensity = lData.intensity;
-
-    // Compute the PDF
-    lAttr.pdf = lDist * lDist / (abs(dot(lAttr.N, lAttr.L)) * lData.surfaceArea);
-
-    // Set light's contribution
-    if (lAttr.pdf > 0.f && dot(lAttr.N, lAttr.L) < 0.f)
-        lAttr.lightIntensity /= lAttr.pdf;
     else
-        lAttr.lightIntensity = 0;
+    {
+        float3 intersectPosW;
+        intersectRaySphere(sd.posW, dominantDir, probe.posW, probe.radius, intersectPosW);
+        uv = dirToSphericalCrd(normalize(intersectPosW - probe.posW));
+    }
+
+    float3 ld = probe.resources.specularTexture.SampleLevel(probe.resources.sampler, uv, mipLevel).rgb;
+
+    float2 dfg = gProbeShared.dfgTexture.SampleLevel(gProbeShared.dfgSampler, float2(sd.NdotV, sd.roughness), 0).xy;
+
+    // ld * (f0 * Gv * (1 - Fc)) + (f90 * Gv * Fc)
+    return ld * (sd.specular * dfg.x + dfg.y);
 }
 
-#endif	// _FALCOR_LIGHTS_H_
+/** Evaluate a 2D light-probe filtered using linear-filtering
+*/
+LightSample evalLightProbeLinear2D(LightProbeData probe, ShadingData sd)
+{
+    LightSample ls;
+
+    // Calculate the reflection vector
+    ls.L = reflect(-sd.V, sd.N);
+
+    // Evaluate diffuse component
+    ls.diffuse = evalLightProbeDiffuse(probe, sd);
+
+    // Get the specular component
+    ls.specular = evalLightProbeSpecular(probe, sd, ls.L);
+
+    ls.diffuse *= probe.intensity;
+    ls.specular *= probe.intensity;
+    ls.posW = probe.posW;
+    ls.distance = length(probe.posW - sd.posW);
+    calcCommonLightProperties(sd, ls);
+
+    return ls;
+}
+
+/** Evaluate the properties of a light-probe
+*/
+LightSample evalLightProbe(LightProbeData probe, ShadingData sd)
+{
+    return evalLightProbeLinear2D(probe, sd);
+}
+
+#endif	// _FALCOR_LIGHTS_SLANG_

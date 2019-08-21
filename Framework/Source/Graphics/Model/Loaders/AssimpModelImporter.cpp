@@ -28,9 +28,6 @@
 #include "assimp/Importer.hpp"
 #include "assimp/postprocess.h"
 #include "assimp/scene.h"
-#include "glm/matrix.hpp"
-#include "glm/common.hpp"
-#include "glm/geometric.hpp"
 
 #include "Framework.h"
 #include "AssimpModelImporter.h"
@@ -150,27 +147,26 @@ namespace Falcor
         return indices;
     }
 
-    void genTangentSpace(const aiMesh* pAiMesh)
+    void genTangentSpace(aiMesh* pAiMesh)
     {
         if (pAiMesh->mFaces[0].mNumIndices == 3)
         {
-            aiMesh* pMesh = const_cast<aiMesh*>(pAiMesh);
-            pMesh->mBitangents = new aiVector3D[pMesh->mNumVertices];
+            pAiMesh->mBitangents = new aiVector3D[pAiMesh->mNumVertices];
 
-            const glm::vec3* pPos = (glm::vec3*)pMesh->mVertices;
-            glm::vec3* pBi = (glm::vec3*)pMesh->mBitangents;
-            glm::vec3* pNormals = (glm::vec3*)pMesh->mNormals;
+            const glm::vec3* pPos = (glm::vec3*)pAiMesh->mVertices;
+            glm::vec3* pBi = (glm::vec3*)pAiMesh->mBitangents;
+            glm::vec3* pNormals = (glm::vec3*)pAiMesh->mNormals;
             std::vector<uint32_t> indices = createIndexBufferData(pAiMesh);
 
             uint32_t texCrdCount = 0;
             std::vector<glm::vec2> texCrd;
-            if (pMesh->mTextureCoords[0] != nullptr)
+            if (pAiMesh->mTextureCoords[0] != nullptr)
             {
                 texCrdCount = 1;
-                texCrd.resize(pMesh->mNumVertices);
-                for (size_t i = 0; i < pMesh->mNumVertices; ++i)
+                texCrd.resize(pAiMesh->mNumVertices);
+                for (size_t i = 0; i < pAiMesh->mNumVertices; ++i)
                 {
-                    texCrd[i] = glm::vec2(pMesh->mTextureCoords[0][i].x, pMesh->mTextureCoords[0][i].y);
+                    texCrd[i] = glm::vec2(pAiMesh->mTextureCoords[0][i].x, pAiMesh->mTextureCoords[0][i].y);
                 }
             }
 
@@ -209,40 +205,51 @@ namespace Falcor
         return glm::transpose(glmMat);
     }
 
-    BasicMaterial::MapType getFalcorTexTypeFromAi(aiTextureType type, const bool isObjFile)
+    static void setTexture(aiTextureType type, bool isObjFile, Material* pMaterial, Texture::SharedPtr pTexture)
     {
         switch (type)
         {
         case aiTextureType_DIFFUSE:
-            return BasicMaterial::MapType::DiffuseMap;
+            pMaterial->setBaseColorTexture(pTexture);
+            break;
         case aiTextureType_SPECULAR:
-            return BasicMaterial::MapType::SpecularMap;
+            pMaterial->setSpecularTexture(pTexture);
+            break;
         case aiTextureType_EMISSIVE:
-            return BasicMaterial::MapType::EmissiveMap;
+            pMaterial->setEmissiveTexture(pTexture);
+            break;
         case aiTextureType_HEIGHT:
+        case aiTextureType_DISPLACEMENT:
             // OBJ doesn't support normal maps, so they are usually placed in the height map slot. For consistency with other formats, we move them to the normal map slot.
-            return isObjFile ? BasicMaterial::MapType::NormalMap : BasicMaterial::MapType::HeightMap;
+            isObjFile ? pMaterial->setNormalMap(pTexture) : pMaterial->setHeightMap(pTexture);
+            break;
         case aiTextureType_NORMALS:
-            return BasicMaterial::MapType::NormalMap;
-        case aiTextureType_OPACITY:
-            return BasicMaterial::MapType::AlphaMap;
+            pMaterial->setNormalMap(pTexture);
+            break;
         case aiTextureType_AMBIENT:
-            return BasicMaterial::MapType::AmbientMap;
+            pMaterial->setOcclusionMap(pTexture);
+            break;
+        case aiTextureType_LIGHTMAP:
+            pMaterial->setLightMap(pTexture);
+            break;
         default:
-            return BasicMaterial::MapType::Count;
+            logWarning("Unsupported Assimp texture type " + std::to_string(type));
         }
     }
 
-    bool isSrgbRequired(aiTextureType aiType, bool isSrgbRequested)
+    bool isSrgbRequired(aiTextureType aiType, bool isSrgbRequested, uint32_t shadingModel)
     {
         if (isSrgbRequested == false)
         {
             return false;
         }
+
         switch (aiType)
         {
-        case aiTextureType_DIFFUSE:
         case aiTextureType_SPECULAR:
+            assert(shadingModel == ShadingModelMetalRough || shadingModel == ShadingModelSpecGloss);
+            return (shadingModel == ShadingModelSpecGloss);
+        case aiTextureType_DIFFUSE:
         case aiTextureType_AMBIENT:
         case aiTextureType_EMISSIVE:
         case aiTextureType_LIGHTMAP:
@@ -260,7 +267,7 @@ namespace Falcor
         }
     }
 
-    void AssimpModelImporter::loadTextures(const aiMaterial* pAiMaterial, const std::string& folder, BasicMaterial* pMaterial, bool isObjFile, bool useSrgb)
+    void AssimpModelImporter::loadTextures(const aiMaterial* pAiMaterial, const std::string& folder, Material* pMaterial, bool isObjFile, bool useSrgb)
     {
         for (int i = 0; i < AI_TEXTURE_TYPE_MAX; ++i)
         {
@@ -299,7 +306,7 @@ namespace Falcor
                     // create a new texture
                     std::string fullpath = folder + '/' + s;
                     fullpath = replaceSubstring(fullpath, "\\", "/");
-                    pTex = createTextureFromFile(fullpath, true, isSrgbRequired(aiType, useSrgb));
+                    pTex = createTextureFromFile(fullpath, true, isSrgbRequired(aiType, useSrgb, pMaterial->getShadingModel()));
                     if (pTex)
                     {
                         mTextureCache[s] = pTex;
@@ -307,15 +314,7 @@ namespace Falcor
                 }
 
                 assert(pTex != nullptr);
-                BasicMaterial::MapType texSlot = getFalcorTexTypeFromAi(aiType, isObjFile);
-                if (texSlot != BasicMaterial::MapType::Count)
-                {
-                    pMaterial->pTextures[texSlot] = pTex;
-                }
-                else
-                {
-                    logWarning("Texture '" + s + "' is not supported by the material system\n");
-                }
+                setTexture(aiType, isObjFile, pMaterial, pTex);
             }
         }
 
@@ -325,68 +324,83 @@ namespace Falcor
 
     Material::SharedPtr AssimpModelImporter::createMaterial(const aiMaterial* pAiMaterial, const std::string& folder, bool isObjFile, bool useSrgb)
     {
-        BasicMaterial basicMaterial;
-        loadTextures(pAiMaterial, folder, &basicMaterial, isObjFile, useSrgb);
+        aiString name;
+        pAiMaterial->Get(AI_MATKEY_NAME, name);
+
+        // Parse the name
+        std::string nameStr = std::string(name.C_Str());
+        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
+        auto nameVec = splitString(nameStr, ".");   // The name might contain information about the material
+        Material::SharedPtr pMaterial = Material::create(nameVec[0]);
+
+        // Determine shading model.
+        // MetalRough is the default for everything except OBJ. Check that both flags aren't set simultaneously.
+        assert(!(is_set(mFlags, Model::LoadFlags::UseSpecGlossMaterials) && is_set(mFlags, Model::LoadFlags::UseMetalRoughMaterials)));
+        if (is_set(mFlags, Model::LoadFlags::UseSpecGlossMaterials) || (isObjFile && !is_set(mFlags, Model::LoadFlags::UseMetalRoughMaterials)))
+        {
+            pMaterial->setShadingModel(ShadingModelSpecGloss);
+        }
+
+        // Load textures. Note that loading is affected by the current shading model.
+        loadTextures(pAiMaterial, folder, pMaterial.get(), isObjFile, useSrgb);
 
         // Opacity
         float opacity;
         if (pAiMaterial->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS)
         {
-            basicMaterial.opacity = opacity;
+            vec4 diffuse = pMaterial->getBaseColor();
+            diffuse.a = opacity;
+            pMaterial->setBaseColor(diffuse);
         }
 
         // Bump scaling
         float bumpScaling;
         if (pAiMaterial->Get(AI_MATKEY_BUMPSCALING, bumpScaling) == AI_SUCCESS)
         {
-            basicMaterial.bumpScale = bumpScaling;
+            float bumpOffset = pMaterial->getHeightOffset();
+            pMaterial->setHeightScaleOffset(bumpScaling, bumpOffset);
         }
 
         // Shininess
         float shininess;
         if (pAiMaterial->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
         {
-            basicMaterial.shininess = shininess;
+            // Convert OBJ/MTL Phong exponent to glossiness.
+            if (isObjFile)
+            {
+                float roughness = convertShininessToRoughness(shininess);
+                shininess = 1.f - roughness;
+            }
+            vec4 spec = pMaterial->getSpecularParams();
+            spec.a = shininess;
+            pMaterial->setSpecularParams(spec);
         }
 
         // Refraction
         float refraction;
-        if (pAiMaterial->Get(AI_MATKEY_REFRACTI, refraction) == AI_SUCCESS)
-        {
-            basicMaterial.IoR = refraction;
-        }
+        if (pAiMaterial->Get(AI_MATKEY_REFRACTI, refraction) == AI_SUCCESS) pMaterial->setIndexOfRefraction(refraction);
 
         // Diffuse color
         aiColor3D color;
         if (pAiMaterial->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
         {
-            basicMaterial.diffuseColor = glm::vec3(color.r, color.g, color.b);
+            vec4 diffuse = vec4(color.r, color.g, color.b, pMaterial->getBaseColor().a);
+            pMaterial->setBaseColor(diffuse);
         }
 
         // Specular color
         if (pAiMaterial->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS)
         {
-            basicMaterial.specularColor = glm::vec3(color.r, color.g, color.b);
+            vec4 specular = vec4(color.r, color.g, color.b, pMaterial->getSpecularParams().a);
+            pMaterial->setSpecularParams(specular);
         }
 
         // Emissive color
         if (pAiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
         {
-            basicMaterial.emissiveColor = glm::vec3(color.r, color.g, color.b);
-            if (isObjFile && luminance(basicMaterial.emissiveColor) > 0)
-            {
-                basicMaterial.pTextures[BasicMaterial::MapType::EmissiveMap] = basicMaterial.pTextures[BasicMaterial::MapType::DiffuseMap];
-            }
+            vec3 emissive = vec3(color.r, color.g, color.b);
+            pMaterial->setEmissiveColor(emissive);
         }
-
-        // Transparent color
-        if (pAiMaterial->Get(AI_MATKEY_COLOR_TRANSPARENT, color) == AI_SUCCESS)
-        {
-            basicMaterial.transparentColor = glm::vec3(color.r, color.g, color.b);
-        }
-
-        auto pMaterial = basicMaterial.convertToMaterial();
-
         // Double-Sided
         int isDoubleSided;
         if (pAiMaterial->Get(AI_MATKEY_TWOSIDED, isDoubleSided) == AI_SUCCESS)
@@ -394,15 +408,16 @@ namespace Falcor
             pMaterial->setDoubleSided((isDoubleSided != 0));
         }
 
-        // Material name
-        aiString name;
-        pAiMaterial->Get(AI_MATKEY_NAME, name);
-        std::string nameStr = std::string(name.C_Str());
-        if (nameStr.length() > 0)
+        // Parse the information contained in the name
+        // The first part is the material name, the other parts provides some info about the material properties
+        if (nameVec.size() > 1)
         {
-            pMaterial->setName(nameStr);
+            for (size_t i = 1; i < nameVec.size(); i++)
+            {
+                if (nameVec[i] == "doublesided") pMaterial->setDoubleSided(true);
+                else logWarning("Unknown material property found in the material's name - `" + nameVec[i] + "`");
+            }
         }
-
         return pMaterial;
     }
 
@@ -502,29 +517,20 @@ namespace Falcor
             return false;
         }
 
-        uint32_t AssimpFlags = aiProcessPreset_TargetRealtime_MaxQuality |
+        uint32_t assimpFlags = aiProcessPreset_TargetRealtime_MaxQuality |
             aiProcess_OptimizeGraph |
             aiProcess_FlipUVs |
-            // aiProcess_FixInfacingNormals | // causes incorrect facing normals for crytek-sponza
             0;
 
-        // aiProcessPreset_TargetRealtime_MaxQuality enabled some optimizations the user might not want
-        if(is_set(mFlags, Model::LoadFlags::FindDegeneratePrimitives) == false)
-        {
-            AssimpFlags &= ~aiProcess_FindDegenerates;
-        }
-
-        // Avoid merging original meshes
-        if(is_set(mFlags, Model::LoadFlags::DontMergeMeshes))
-        {
-            AssimpFlags &= ~aiProcess_OptimizeMeshes;
-        }
+        if(is_set(mFlags, Model::LoadFlags::FindDegeneratePrimitives) == false) assimpFlags &= ~aiProcess_FindDegenerates;
+        if(is_set(mFlags, Model::LoadFlags::DontMergeMeshes))                   assimpFlags &= ~aiProcess_OptimizeMeshes; // Avoid merging original meshes
+        if(is_set(mFlags, Model::LoadFlags::RemoveInstancing))                  assimpFlags |= aiProcess_PreTransformVertices;
 
         // Never use Assimp's tangent gen code
-        AssimpFlags &= ~(aiProcess_CalcTangentSpace);
+        assimpFlags &= ~(aiProcess_CalcTangentSpace);
 
         Assimp::Importer importer;
-        const aiScene* pScene = importer.ReadFile(fullpath, AssimpFlags);
+        const aiScene* pScene = importer.ReadFile(fullpath, assimpFlags);
 
         if((pScene == nullptr) || (verifyScene(pScene) == false))
         {
@@ -752,7 +758,8 @@ namespace Falcor
 
     BoundingBox createMeshBbox(const aiMesh* pAiMesh)
     {
-        glm::vec3 boxMin, boxMax;
+        vec3 boxMin(FLT_MAX);
+        vec3 boxMax(-FLT_MAX);
         for (uint32_t vertexID = 0; vertexID < pAiMesh->mNumVertices; vertexID++)
         {
             glm::vec3 xyz(pAiMesh->mVertices[vertexID].x, pAiMesh->mVertices[vertexID].y, pAiMesh->mVertices[vertexID].z);
@@ -763,7 +770,7 @@ namespace Falcor
         return BoundingBox::fromMinMax(boxMin, boxMax);
     }
 
-    Mesh::SharedPtr AssimpModelImporter::createMesh(const aiMesh* pAiMesh, bool forcePatch)
+    Mesh::SharedPtr AssimpModelImporter::createMesh(aiMesh* pAiMesh)
     {
         uint32_t vertexCount = pAiMesh->mNumVertices;
         uint32_t indexCount = pAiMesh->mNumFaces * pAiMesh->mFaces[0].mNumIndices;
@@ -827,8 +834,7 @@ namespace Falcor
 
         if (generateTangentSpace)
         {
-            aiMesh* pM = const_cast<aiMesh*>(pAiMesh);
-            safe_delete_array(pM->mBitangents);
+            safe_delete_array(pAiMesh->mBitangents);
         }
 
         return pMesh;
@@ -866,6 +872,8 @@ namespace Falcor
             return pAiMesh->HasTextureCoords(0);
         case VERTEX_LIGHTMAP_UV_LOC:
             return pAiMesh->HasTextureCoords(1);
+        case VERTEX_PREV_POSITION_LOC:
+            return false;
         default:
             should_not_get_here();
             return false;
@@ -949,10 +957,18 @@ namespace Falcor
                     size = sizeof(pAiMesh->mColors[0][0]);
                     break;
                 case VERTEX_TEXCOORD_LOC:
+                    if (pAiMesh->mTextureCoords[0][vertexID].z != 0.f)
+                    {
+                        Falcor::logErrorAndExit("AssimpModelImporter::createVertexBuffer: Texcoord[0].z != 0.0");
+                    }
                     pSrc = (uint8_t*)(&pAiMesh->mTextureCoords[0][vertexID]);
                     size = sizeof(pAiMesh->mTextureCoords[0][vertexID]);
                     break;
                 case VERTEX_LIGHTMAP_UV_LOC:
+                    if (pAiMesh->mTextureCoords[1][vertexID].z != 0.f)
+                    {
+                        Falcor::logErrorAndExit("AssimpModelImporter::createVertexBuffer: Texcoord[1].z != 0.0");
+                    }
                     pSrc = (uint8_t*)(&pAiMesh->mTextureCoords[1][vertexID]);
                     size = sizeof(pAiMesh->mTextureCoords[1][vertexID]);
                     break;

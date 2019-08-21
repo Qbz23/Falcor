@@ -25,9 +25,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-#include "glm/detail/func_trigonometric.hpp"
-#include "glm/gtx/euler_angles.hpp"
-
 #include "Framework.h"
 #include "SceneImporter.h"
 #include "rapidjson/error/en.h"
@@ -37,6 +34,8 @@
 #include <fstream>
 #include <algorithm>
 #include "Graphics/TextureHelper.h"
+#include "API/Device.h"
+#include "Data/HostDeviceSharedMacros.h"
 
 #define SCENE_IMPORTER
 #include "SceneExportImportCommon.h"
@@ -57,20 +56,20 @@ namespace Falcor
     template<uint32_t VecSize>
     bool SceneImporter::getFloatVec(const rapidjson::Value& jsonVal, const std::string& desc, float vec[VecSize])
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             error("Trying to load a vector for " + desc + ", but JValue is not an array");
             return false;
         }
 
-        if(jsonVal.Size() != VecSize)
+        if (jsonVal.Size() != VecSize)
         {
             return error("Trying to load a vector for " + desc + ", but vector size mismatches. Required size is " + std::to_string(VecSize) + ", array size is " + std::to_string(jsonVal.Size()));
         }
 
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
-            if(jsonVal[i].IsNumber() == false)
+            if (jsonVal[i].IsNumber() == false)
             {
                 return error("Trying to load a vector for " + desc + ", but one the elements is not a number.");
             }
@@ -108,12 +107,12 @@ namespace Falcor
 
     bool SceneImporter::createModelInstances(const rapidjson::Value& jsonVal, const Model::SharedPtr& pModel)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("Model instances should be an array of objects");
         }
 
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
             const auto& instance = jsonVal[i];
             glm::vec3 scaling(1, 1, 1);
@@ -121,34 +120,34 @@ namespace Falcor
             glm::vec3 rotation(0, 0, 0);
             std::string name = "Instance " + std::to_string(i);
 
-            for(auto m = instance.MemberBegin(); m < instance.MemberEnd(); m++)
+            for (auto m = instance.MemberBegin(); m < instance.MemberEnd(); m++)
             {
                 std::string key(m->name.GetString());
-                if(key == SceneKeys::kName)
+                if (key == SceneKeys::kName)
                 {
-                    if(m->value.IsString() == false)
+                    if (m->value.IsString() == false)
                     {
                         return error("Model instance name should be a string value.");
                     }
                     name = std::string(m->value.GetString());
                 }
-                else if(key == SceneKeys::kTranslationVec)
+                else if (key == SceneKeys::kTranslationVec)
                 {
-                    if(getFloatVec<3>(m->value, "Model instance translation vector", &translation[0]) == false)
+                    if (getFloatVec<3>(m->value, "Model instance translation vector", &translation[0]) == false)
                     {
                         return false;
                     }
                 }
-                else if(key == SceneKeys::kScalingVec)
+                else if (key == SceneKeys::kScalingVec)
                 {
-                    if(getFloatVec<3>(m->value, "Model instance scale vector", &scaling[0]) == false)
+                    if (getFloatVec<3>(m->value, "Model instance scale vector", &scaling[0]) == false)
                     {
                         return false;
                     }
                 }
-                else if(key == SceneKeys::kRotationVec)
+                else if (key == SceneKeys::kRotationVec)
                 {
-                    if(getFloatVec<3>(m->value, "Model instance rotation vector", &rotation[0]) == false)
+                    if (getFloatVec<3>(m->value, "Model instance rotation vector", &rotation[0]) == false)
                     {
                         return false;
                     }
@@ -179,72 +178,96 @@ namespace Falcor
     bool SceneImporter::createModel(const rapidjson::Value& jsonModel)
     {
         // Model must have at least a filename
-        if(jsonModel.HasMember(SceneKeys::kFilename) == false)
+        if (jsonModel.HasMember(SceneKeys::kFilename) == false)
         {
             return error("Model must have a filename");
         }
+
+        // Get Model name
         const auto& modelFile = jsonModel[SceneKeys::kFilename];
-        if(modelFile.IsString() == false)
+        if (modelFile.IsString() == false)
         {
             return error("Model filename must be a string");
         }
 
-        // Load the model
-        std::string file =  mDirectory + '/' + modelFile.GetString();
+        std::string file = mDirectory + '/' + modelFile.GetString();
         if (doesFileExist(file) == false)
         {
             file = modelFile.GetString();
         }
-        auto pModel = Model::createFromFile(file.c_str(), mModelLoadFlags);
-        if(pModel == nullptr)
+
+        // Parse additional properties that affect loading
+        Model::LoadFlags modelFlags = mModelLoadFlags;
+        if (jsonModel.HasMember(SceneKeys::kMaterial))
+        {
+            const auto& materialSettings = jsonModel[SceneKeys::kMaterial];
+            if (materialSettings.IsObject() == false)
+            {
+                return error("Material properties for \"" + file + "\" must be a JSON object");
+            }
+
+            for (auto m = materialSettings.MemberBegin(); m != materialSettings.MemberEnd(); m++)
+            {
+                if (m->name == SceneKeys::kShadingModel)
+                {
+                    if (m->value == SceneKeys::kShadingSpecGloss)
+                    {
+                        modelFlags |= Model::LoadFlags::UseSpecGlossMaterials;
+                    }
+                    else if (m->value == SceneKeys::kShadingMetalRough)
+                    {
+                        modelFlags |= Model::LoadFlags::UseMetalRoughMaterials;
+                    }
+                    else
+                    {
+                        return error("Invalid value found in " + std::string(SceneKeys::kShadingModel) + ". Value == " + std::string(m->value.GetString()) + ".");
+                    }
+                }
+            }
+        }
+
+        // Load the model
+        auto pModel = Model::createFromFile(file.c_str(), modelFlags);
+        if (pModel == nullptr)
         {
             return error("Could not load model: " + file);
         }
 
-        pModel->setFilename(modelFile.GetString());
-
         bool instanceAdded = false;
 
         // Loop over the other members
-        for(auto jval = jsonModel.MemberBegin(); jval != jsonModel.MemberEnd(); jval++)
+        for (auto jval = jsonModel.MemberBegin(); jval != jsonModel.MemberEnd(); jval++)
         {
             std::string keyName(jval->name.GetString());
-            if(keyName == SceneKeys::kFilename)
+            if (keyName == SceneKeys::kFilename)
             {
                 // Already handled
             }
-            else if(keyName == SceneKeys::kName)
+            else if (keyName == SceneKeys::kName)
             {
-                if(jval->value.IsString() == false)
+                if (jval->value.IsString() == false)
                 {
                     return error("Model name should be a string value.");
                 }
                 pModel->setName(std::string(jval->value.GetString()));
             }
-            else if (keyName == SceneKeys::kMaterialOverrides)
+            else if (keyName == SceneKeys::kModelInstances)
             {
-                if (setMaterialOverrides(jval->value, pModel) == false)
-                {
-                    return false;
-                }
-            }
-            else if(keyName == SceneKeys::kModelInstances)
-            {
-                if(createModelInstances(jval->value, pModel) == false)
+                if (createModelInstances(jval->value, pModel) == false)
                 {
                     return false;
                 }
 
                 instanceAdded = true;
             }
-            else if(keyName == SceneKeys::kActiveAnimation)
+            else if (keyName == SceneKeys::kActiveAnimation)
             {
-                if(jval->value.IsUint() == false)
+                if (jval->value.IsUint() == false)
                 {
                     return error("Model active animation should be an unsigned integer");
                 }
                 uint32_t activeAnimation = jval->value.GetUint();
-                if(activeAnimation >= pModel->getAnimationsCount())
+                if (activeAnimation >= pModel->getAnimationsCount())
                 {
                     std::string msg = "Warning when parsing scene file \"" + mFilename + "\".\nModel " + pModel->getName() + " was specified with active animation " + std::to_string(activeAnimation);
                     msg += ", but model only has " + std::to_string(pModel->getAnimationsCount()) + " animations. Ignoring field";
@@ -254,6 +277,10 @@ namespace Falcor
                 {
                     pModel->setActiveAnimation(activeAnimation);
                 }
+            }
+            else if (keyName == SceneKeys::kMaterial)
+            {
+                // Existing parameters already handled
             }
             else
             {
@@ -270,406 +297,17 @@ namespace Falcor
         return true;
     }
 
-    bool SceneImporter::setMaterialOverrides(const rapidjson::Value& jsonVal, const Model::SharedPtr& pModel)
-    {
-        if (jsonVal.IsArray() == false)
-        {
-            return error("Material overrides should be an array of objects");
-        }
-
-        // For each override. Each object represents one mesh and one material
-        for (uint32_t i = 0; i < jsonVal.Size(); i++)
-        {
-            const auto& meshOverride = jsonVal[i];
-
-            uint32_t meshID = (uint32_t)-1;
-            uint32_t materialID = (uint32_t)-1;
-
-            // Read object
-            for (auto it = meshOverride.MemberBegin(); it < meshOverride.MemberEnd(); it++)
-            {
-                std::string key(it->name.GetString());
-
-                if (key == SceneKeys::kMeshID)
-                {
-                    meshID = it->value.GetUint();
-                }
-                else if(key == SceneKeys::kMaterialID)
-                {
-                    materialID = it->value.GetUint();
-                }
-                else
-                {
-                    return error("Unknown key \"" + key + "\" when parsing material overrides for model " + pModel->getFilename());
-                }
-            }
-
-            if (meshID == (uint32_t)-1 || materialID == (uint32_t)-1)
-            {
-                return error("Missing data while parsing when parsing material overrides for model " + pModel->getFilename());
-            }
-
-            // Apply override
-            auto& pMesh = pModel->getMesh(meshID);
-            mScene.getMaterialHistory()->replace(pMesh.get(), mScene.getMaterial(materialID));
-        }
-
-        return true;
-    }
-
     bool SceneImporter::parseModels(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("models section should be an array of objects.");
         }
 
         // Loop over the array
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
-            if(createModel(jsonVal[i]) == false)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    uint32_t getMaterialLayerType(const std::string& type)
-    {
-        if(type == SceneKeys::kMaterialLambert)
-        {
-            return MatLambert;
-        }
-        else if(type == SceneKeys::kMaterialDielectric)
-        {
-            return MatDielectric;
-        }
-        else if(type == SceneKeys::kMaterialConductor)
-        {
-            return MatConductor;
-        }
-        else if(type == SceneKeys::kMaterialEmissive)
-        {
-            return MatEmissive;
-        }
-        else if(type == SceneKeys::kMaterialUser)
-        {
-            return MatUser;
-        }
-        else
-        {
-            return MatNone;
-        }
-    }
-
-    uint32_t getMaterialLayerNDF(const std::string& ndf)
-    {
-        if(ndf == SceneKeys::kMaterialGGX)
-        {
-            return NDFGGX;
-        }
-        else if(ndf == SceneKeys::kMaterialBeckmann)
-        {
-            return NDFBeckmann;
-        }
-        else if(ndf == SceneKeys::kMaterialUser)
-        {
-            return NDFUser;
-        }
-        else
-        {
-            return -1;
-        }
-    }
-
-    uint32_t getMaterialLayerBlend(const std::string& blend)
-    {
-        if(blend == SceneKeys::kMaterialBlendFresnel)
-        {
-            return BlendFresnel;
-        }
-        else if(blend == SceneKeys::kMaterialBlendConstant)
-        {
-            return BlendConstant;
-        }
-        else if(blend == SceneKeys::kMaterialBlendAdd)
-        {
-            return BlendAdd;
-        }
-        else
-        {
-            return -1;
-        }
-    }
-
-    bool SceneImporter::createMaterialLayerType(const rapidjson::Value& jsonValue, Material::Layer& layerOut)
-    {
-        if(jsonValue.IsString() == false)
-        {
-            return error("Material layer Type should be string");
-        }
-
-        uint32_t type = getMaterialLayerType(jsonValue.GetString());
-        if(type == MatNone)
-        {
-            return error("Unknown material layer Type '" + std::string(jsonValue.GetString()) + "'");
-        }
-
-        layerOut.type = (Material::Layer::Type)type;
-        return true;
-    }
-
-    bool SceneImporter::createMaterialLayerNDF(const rapidjson::Value& jsonValue, Material::Layer& layerOut)
-    {
-        if(jsonValue.IsString() == false)
-        {
-            return error("Material layer NDF should be string");
-        }
-
-        uint32_t ndf = getMaterialLayerNDF(jsonValue.GetString());
-        if(ndf == -1)
-        {
-            return error("Unknown material layer NDF '" + std::string(jsonValue.GetString()) + "'");
-        }
-
-        layerOut.ndf = (Material::Layer::NDF)ndf;
-        return true;
-    }
-
-    bool SceneImporter::createMaterialLayerBlend(const rapidjson::Value& jsonValue, Material::Layer& layerOut)
-    {
-        if(jsonValue.IsString() == false)
-        {
-            return error("Material layer NDF should be string");
-        }
-
-        uint32_t blending = getMaterialLayerBlend(jsonValue.GetString());
-        if(blending == -1)
-        {
-            return error("Unknown material layer blending '" + std::string(jsonValue.GetString()) + "'");
-        }
-
-        layerOut.blend = (Material::Layer::Blend)blending;
-        return true;
-    }
-
-    bool SceneImporter::createMaterialTexture(const rapidjson::Value& jsonValue, Texture::SharedPtr& pTexture, bool isSrgb)
-    {
-        if(jsonValue.IsString() == false)
-        {
-            return error("Material texture should be a string");
-        }
-
-        std::string filename = jsonValue.GetString();
-        // Check if the file exists relative to the scene file
-        std::string fullpath = mDirectory + "/" + filename;
-        if(doesFileExist(fullpath))
-        {
-            filename = fullpath;
-        }
-
-        pTexture = createTextureFromFile(filename, true, isSrgb);
-        if (pTexture == nullptr)
-        {
-            return error("Could not load texture: " + filename);
-        }
-
-        return true;
-    }
-
-    bool SceneImporter::createMaterialLayer(const rapidjson::Value& jsonLayer, Material::Layer& layerOut)
-    {
-        if(jsonLayer.IsObject() == false)
-        {
-            return error("Material layer should be an object");
-        }
-
-        bool bOK = true;
-        for(auto it = jsonLayer.MemberBegin(); (it != jsonLayer.MemberEnd()) && bOK; it++)
-        {
-            std::string key(it->name.GetString());
-            const auto& value = it->value;
-
-            if (key == SceneKeys::kMaterialTexture)
-            {
-                bOK = createMaterialTexture(value, layerOut.pTexture, true);
-            }
-            else if(key == SceneKeys::kMaterialLayerType)
-            {
-                bOK = createMaterialLayerType(value, layerOut);
-            }
-            else if(key == SceneKeys::kMaterialNDF)
-            {
-                bOK = createMaterialLayerNDF(value, layerOut);
-            }
-            else if(key == SceneKeys::kMaterialBlend)
-            {
-                bOK = createMaterialLayerBlend(value, layerOut);
-            }
-            else if(key == SceneKeys::kMaterialAlbedo)
-            {
-                float* pData = reinterpret_cast<float*>(layerOut.albedo.data.data);
-                getFloatVec<4>(value, SceneKeys::kMaterialAlbedo, pData);
-            }
-            else if(key == SceneKeys::kMaterialRoughness)
-            {
-                float* pData = reinterpret_cast<float*>(layerOut.roughness.data.data);
-                getFloatVec<4>(value, SceneKeys::kMaterialRoughness, pData);
-            }
-            else if(key == SceneKeys::kMaterialExtraParam)
-            {
-                float* pData = reinterpret_cast<float*>(layerOut.extraParam.data.data);
-                getFloatVec<4>(value, "Extra Params", pData);
-            }
-            else
-            {
-                bOK = false;
-                error("Invalid key found in material layers section. Key == " + key + ".");
-            }
-        }
-
-        return bOK;
-    }
-
-    bool SceneImporter::createAllMaterialLayers(const rapidjson::Value& jsonLayerArray, Material* pMaterial)
-    {
-        if(jsonLayerArray.IsArray() == false)
-        {
-            return error("Material layers should be array");
-        }
-
-        if(jsonLayerArray.Size() > MatMaxLayers)
-        {
-            return error("Material has too many layers.");
-        }
-
-        for(uint32_t i = 0; i < jsonLayerArray.Size(); i++)
-        {
-            Material::Layer layer;
-            if(createMaterialLayer(jsonLayerArray[i], layer) == false)
-            {
-                return false;
-            }
-
-            pMaterial->addLayer(layer);
-        }
-        return true;
-    }
-
-    bool SceneImporter::createMaterial(const rapidjson::Value& jsonMaterial)
-    {
-        if(jsonMaterial.IsObject() == false)
-        {
-            return error("Material should be an object");
-        }
-
-        auto pMaterial = Material::create("");
-        for(auto it = jsonMaterial.MemberBegin(); it != jsonMaterial.MemberEnd(); it++)
-        {
-            std::string key(it->name.GetString());
-            const auto& value = it->value;
-
-            if(key == SceneKeys::kName)
-            {
-                if(value.IsString() == false)
-                {
-                    return error("Material name should be a string");
-                }
-                pMaterial->setName(value.GetString());
-            }
-            else if(key == SceneKeys::kID)
-            {
-                if(value.IsUint() == false)
-                {
-                    return error("Material ID should be an unsigned integer");
-                }
-                pMaterial->setID(value.GetUint());
-            }
-            else if (key == SceneKeys::kMaterialDoubleSided)
-            {
-                if (value.IsBool() == false)
-                {
-                    return error("Material double-sidedness should be a bool");
-                }
-                pMaterial->setDoubleSided(value.GetBool());
-            }
-            else if(key == SceneKeys::kMaterialAlpha)
-            {
-                Texture::SharedPtr pTexture;
-                if (createMaterialTexture(value, pTexture, false))
-                {
-                    pMaterial->setAlphaMap(pTexture);
-                }
-                else
-                {
-                    return error("Material alpha map could not be loaded");
-                }
-            }
-            else if(key == SceneKeys::kMaterialNormal)
-            {
-                Texture::SharedPtr pTexture;
-                if (createMaterialTexture(value, pTexture, false))
-                {
-                    pMaterial->setNormalMap(pTexture);
-                }
-                else
-                {
-                    return error("Material normal map could not be loaded");
-                }
-            }
-            else if (key == SceneKeys::kMaterialHeight)
-            {
-                Texture::SharedPtr pTexture;
-                if (createMaterialTexture(value, pTexture, false))
-                {
-                    pMaterial->setHeightMap(pTexture);
-                }
-                else
-                {
-                    return error("Material height map could not be loaded");
-                }
-            }
-            else if (key == SceneKeys::kMaterialAO)
-            {
-                Texture::SharedPtr pTexture;
-                if (createMaterialTexture(value, pTexture, true))
-                {
-                    pMaterial->setAmbientOcclusionMap(pTexture);
-                }
-                else
-                {
-                    return error("Material ambient occlusion map could not be loaded");
-                }
-            }
-            else if(key == SceneKeys::kMaterialLayers)
-            {
-                if(createAllMaterialLayers(value, pMaterial.get()) == false)
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                return error("Invalid key found in materials section. Key == " + key + ".");
-            }
-        }
-
-        mScene.addMaterial(pMaterial);
-        return true;
-    }
-
-    bool SceneImporter::parseMaterials(const rapidjson::Value& jsonVal)
-    {
-        if(jsonVal.IsArray() == false)
-        {
-            return error("Materials section should be an array of objects.");
-        }
-
-        // Loop over the array
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
-        {
-            if(createMaterial(jsonVal[i]) == false)
+            if (createModel(jsonVal[i]) == false)
             {
                 return false;
             }
@@ -681,40 +319,40 @@ namespace Falcor
     {
         auto pDirLight = DirectionalLight::create();
 
-        for(auto it = jsonLight.MemberBegin(); it != jsonLight.MemberEnd(); it++)
+        for (auto it = jsonLight.MemberBegin(); it != jsonLight.MemberEnd(); it++)
         {
             std::string key(it->name.GetString());
             const auto& value = it->value;
-            if(key == SceneKeys::kName)
+            if (key == SceneKeys::kName)
             {
-                if(value.IsString() == false)
+                if (value.IsString() == false)
                 {
                     return error("Point light name should be a string");
                 }
                 std::string name = value.GetString();
-                if(name.find(' ') != std::string::npos)
+                if (name.find(' ') != std::string::npos)
                 {
                     return error("Point light name can't have spaces");
                 }
                 pDirLight->setName(name);
             }
-            else if(key == SceneKeys::kType)
+            else if (key == SceneKeys::kType)
             {
                 // Don't care
             }
-            else if(key == SceneKeys::kLightIntensity)
+            else if (key == SceneKeys::kLightIntensity)
             {
                 glm::vec3 intensity;
-                if(getFloatVec<3>(value, "Directional light intensity", &intensity[0]) == false)
+                if (getFloatVec<3>(value, "Directional light intensity", &intensity[0]) == false)
                 {
                     return false;
                 }
                 pDirLight->setIntensity(intensity);
             }
-            else if(key == SceneKeys::kLightDirection)
+            else if (key == SceneKeys::kLightDirection)
             {
                 glm::vec3 direction;
-                if(getFloatVec<3>(value, "Directional light intensity", &direction[0]) == false)
+                if (getFloatVec<3>(value, "Directional light intensity", &direction[0]) == false)
                 {
                     return false;
                 }
@@ -733,30 +371,30 @@ namespace Falcor
     {
         auto pPointLight = PointLight::create();
 
-        for(auto it = jsonLight.MemberBegin(); it != jsonLight.MemberEnd(); it++)
+        for (auto it = jsonLight.MemberBegin(); it != jsonLight.MemberEnd(); it++)
         {
             std::string key(it->name.GetString());
             const auto& value = it->value;
-            if(key == SceneKeys::kName)
+            if (key == SceneKeys::kName)
             {
-                if(value.IsString() == false)
+                if (value.IsString() == false)
                 {
                     return error("Dir light name should be a string");
                 }
                 std::string name = value.GetString();
-                if(name.find(' ') != std::string::npos)
+                if (name.find(' ') != std::string::npos)
                 {
                     return error("Dir light name can't have spaces");
                 }
                 pPointLight->setName(name);
             }
-            else if(key == SceneKeys::kType)
+            else if (key == SceneKeys::kType)
             {
                 // Don't care
             }
-            else if(key == SceneKeys::kLightOpeningAngle)
+            else if (key == SceneKeys::kLightOpeningAngle)
             {
-                if(value.IsNumber() == false)
+                if (value.IsNumber() == false)
                 {
                     return error("Camera's FOV should be a number");
                 }
@@ -765,9 +403,9 @@ namespace Falcor
                 angle = glm::radians(angle);
                 pPointLight->setOpeningAngle(angle);
             }
-            else if(key == SceneKeys::kLightPenumbraAngle)
+            else if (key == SceneKeys::kLightPenumbraAngle)
             {
-                if(value.IsNumber() == false)
+                if (value.IsNumber() == false)
                 {
                     return error("Camera's FOV should be a number");
                 }
@@ -776,28 +414,28 @@ namespace Falcor
                 angle = glm::radians(angle);
                 pPointLight->setPenumbraAngle(angle);
             }
-            else if(key == SceneKeys::kLightIntensity)
+            else if (key == SceneKeys::kLightIntensity)
             {
                 glm::vec3 intensity;
-                if(getFloatVec<3>(value, "Point light intensity", &intensity[0]) == false)
+                if (getFloatVec<3>(value, "Point light intensity", &intensity[0]) == false)
                 {
                     return false;
                 }
                 pPointLight->setIntensity(intensity);
             }
-            else if(key == SceneKeys::kLightPos)
+            else if (key == SceneKeys::kLightPos)
             {
                 glm::vec3 position;
-                if(getFloatVec<3>(value, "Point light position", &position[0]) == false)
+                if (getFloatVec<3>(value, "Point light position", &position[0]) == false)
                 {
                     return false;
                 }
                 pPointLight->setWorldPosition(position);
             }
-            else if(key == SceneKeys::kLightDirection)
+            else if (key == SceneKeys::kLightDirection)
             {
                 glm::vec3 dir;
-                if(getFloatVec<3>(value, "Point light direction", &dir[0]) == false)
+                if (getFloatVec<3>(value, "Point light direction", &dir[0]) == false)
                 {
                     return false;
                 }
@@ -822,44 +460,145 @@ namespace Falcor
         return true;
     }
 
+    // Support for analytic area lights
+    bool SceneImporter::createAnalyticAreaLight(const rapidjson::Value& jsonLight)
+    {
+        auto pAreaLight = AnalyticAreaLight::create();
+
+        glm::vec3 scaling(1, 1, 1);
+        glm::vec3 translation(0, 0, 0);
+        glm::vec3 rotation(0, 0, 0);
+
+        for (auto it = jsonLight.MemberBegin(); it != jsonLight.MemberEnd(); it++)
+        {
+            std::string key(it->name.GetString());
+            const auto& value = it->value;
+            if (key == SceneKeys::kName)
+            {
+                if (value.IsString() == false)
+                {
+                    return error("Area light name should be a string");
+                }
+                std::string name = value.GetString();
+                if (name.find(' ') != std::string::npos)
+                {
+                    return error("Area light name can't have spaces");
+                }
+                pAreaLight->setName(name);
+            }
+            else if (key == SceneKeys::kType)
+            {
+                if (value.IsString() == false)
+                {
+                    return error("Area light type should be a string");
+                }
+
+                std::string type = value.GetString();
+                if (type == SceneKeys::kAreaLightRect)          pAreaLight->setType(LightAreaRect);
+                else if (type == SceneKeys::kAreaLightSphere)   pAreaLight->setType(LightAreaSphere);
+                else if (type == SceneKeys::kAreaLightDisc)     pAreaLight->setType(LightAreaDisc);
+                else return error("Invalid area light type");
+            }
+            else if (key == SceneKeys::kLightIntensity)
+            {
+                glm::vec3 intensity;
+                if (getFloatVec<3>(value, "Area light intensity", &intensity[0]) == false)
+                {
+                    return false;
+                }
+                pAreaLight->setIntensity(intensity);
+            }
+            else if (key == SceneKeys::kTranslationVec)
+            {
+                if (getFloatVec<3>(value, "Area light translation vector", &translation[0]) == false)
+                {
+                    return false;
+                }
+            }
+            else if (key == SceneKeys::kScalingVec)
+            {
+                if (getFloatVec<3>(value, "Area light scale vector", &scaling[0]) == false)
+                {
+                    return false;
+                }
+            }
+            else if (key == SceneKeys::kRotationVec)
+            {
+                if (getFloatVec<3>(value, "Area light rotation vector", &rotation[0]) == false)
+                {
+                    return false;
+                }
+
+                rotation = glm::radians(rotation);
+            }
+            else
+            {
+                return error("Invalid key found in area light object. Key == " + key + ".");
+            }
+        }
+
+        // Set transform matrix for the light source
+        pAreaLight->setScaling(scaling);
+        glm::mat4 translationMtx = glm::translate(glm::mat4(), translation);
+        glm::mat4 rotationMtx = glm::yawPitchRoll(rotation[0], rotation[1], rotation[2]);
+        //glm::mat4 scalingMtx = glm::scale(glm::mat4(), scaling);
+        glm::mat4 composite = translationMtx * rotationMtx;
+        pAreaLight->setTransformMatrix(composite);
+
+        if (isNameDuplicate(pAreaLight->getName(), mLightMap, "lights"))
+        {
+            return false;
+        }
+        else
+        {
+            mLightMap[pAreaLight->getName()] = pAreaLight;
+            mScene.addLight(pAreaLight);
+        }
+        return true;
+    }
+
     bool SceneImporter::parseLights(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("lights section should be an array of objects.");
         }
 
         // Go over all the objects
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
             const auto& light = jsonVal[i];
             const auto& type = light.FindMember(SceneKeys::kType);
-            if(type == light.MemberEnd())
+            if (type == light.MemberEnd())
             {
                 return error("Light source must have a type.");
             }
 
-            if(type->value.IsString() == false)
+            if (type->value.IsString() == false)
             {
                 return error("Light source Type must be a string.");
             }
 
             std::string lightType(type->value.GetString());
             bool b;
-            if(lightType == SceneKeys::kDirLight)
+            if (lightType == SceneKeys::kDirLight)
             {
                 b = createDirLight(light);
             }
-            else if(lightType == SceneKeys::kPointLight)
+            else if (lightType == SceneKeys::kPointLight)
             {
                 b = createPointLight(light);
+            }
+            else if (lightType == SceneKeys::kAreaLightRect || lightType == SceneKeys::kAreaLightSphere || lightType == SceneKeys::kAreaLightDisc)
+            {
+                b = createAnalyticAreaLight(light);
             }
             else
             {
                 return error("Unrecognized light Type \"" + lightType + "\"");
             }
 
-            if(b == false)
+            if (b == false)
             {
                 return false;
             }
@@ -868,26 +607,112 @@ namespace Falcor
         return true;
     }
 
+    bool SceneImporter::parseLightProbes(const rapidjson::Value& jsonVal)
+    {
+        if (jsonVal.IsArray() == false)
+        {
+            return error("Light probes should be an array of objects.");
+        }
+
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
+        {
+            const auto& lightProbe = jsonVal[i];
+
+            if (lightProbe.HasMember(SceneKeys::kFilename) == false)
+            {
+                return error("An image file must be specified for a light probe.");
+            }
+
+            // Check if path is relative, if not, assume full path
+            std::string imagePath = lightProbe[SceneKeys::kFilename].GetString();
+            std::string actualPath = mDirectory + '/' + imagePath;
+            if (doesFileExist(actualPath) == false)
+            {
+                actualPath = imagePath;
+            }
+
+            vec3 position;
+            glm::vec3 intensity(1.0f);
+            float radius = -1;
+            uint32_t diffuseSamples = LightProbe::kDefaultDiffSamples;
+            uint32_t specSamples = LightProbe::kDefaultSpecSamples;
+
+            for (auto m = lightProbe.MemberBegin(); m < lightProbe.MemberEnd(); m++)
+            {
+                std::string key = m->name.GetString();
+                const auto& value = m->value;
+                if (key == SceneKeys::kLightIntensity)
+                {
+                    if (getFloatVec<3>(value, "Light probe intensity", &intensity[0]) == false)
+                    {
+                        return false;
+                    }
+                }
+                else if (key == SceneKeys::kLightPos)
+                {
+                    if (getFloatVec<3>(value, "Light probe world position", &position[0]) == false)
+                    {
+                        return false;
+                    }
+                }
+                else if (key == SceneKeys::kLightProbeRadius)
+                {
+                    if (value.IsUint() == false)
+                    {
+                        error("Light Probe radius must be a float.");
+                        return false;
+                    }
+                    radius = float(value.GetDouble());
+                }
+                else if (key == SceneKeys::kLightProbeDiffSamples)
+                {
+                    if (value.IsUint() == false)
+                    {
+                        error("Light Probe diffuse sample count must be a uint.");
+                        return false;
+                    }
+                    diffuseSamples = value.GetUint();
+                }
+                else if (key == SceneKeys::kLightProbeSpecSamples)
+                {
+                    if (value.IsUint() == false)
+                    {
+                        error("Light Probe specular sample count must be a uint.");
+                        return false;
+                    }
+                    specSamples = value.GetUint();
+                }
+            }
+
+            LightProbe::SharedPtr pLightProbe = LightProbe::create(gpDevice->getRenderContext(), actualPath, true, ResourceFormat::RGBA16Float, diffuseSamples, specSamples);
+            pLightProbe->setPosW(position);
+            pLightProbe->setIntensity(intensity);
+            mScene.addLightProbe(pLightProbe);
+        }
+
+        return true;
+    }
+
     bool SceneImporter::createPathFrames(ObjectPath* pPath, const rapidjson::Value& jsonFramesArray)
     {
         // an array of key frames
-        if(jsonFramesArray.IsArray() == false)
+        if (jsonFramesArray.IsArray() == false)
         {
             return error("Camera path frames should be an array of key-frame objects");
         }
 
-        for(uint32_t i = 0; i < jsonFramesArray.Size(); i++)
+        for (uint32_t i = 0; i < jsonFramesArray.Size(); i++)
         {
             float time = 0;
             glm::vec3 pos, target, up;
-            for(auto it = jsonFramesArray[i].MemberBegin(); it < jsonFramesArray[i].MemberEnd(); it++)
+            for (auto it = jsonFramesArray[i].MemberBegin(); it < jsonFramesArray[i].MemberEnd(); it++)
             {
                 std::string key(it->name.GetString());
                 auto& value = it->value;
                 bool b = true;
-                if(key == SceneKeys::kFrameTime)
+                if (key == SceneKeys::kFrameTime)
                 {
-                    if(value.IsNumber() == false)
+                    if (value.IsNumber() == false)
                     {
                         error("Camera path time should be a number");
                         b = false;
@@ -895,20 +720,20 @@ namespace Falcor
 
                     time = (float)value.GetDouble();
                 }
-                else if(key == SceneKeys::kCamPosition)
+                else if (key == SceneKeys::kCamPosition)
                 {
                     b = getFloatVec<3>(value, "Camera path position", &pos[0]);
                 }
-                else if(key == SceneKeys::kCamTarget)
+                else if (key == SceneKeys::kCamTarget)
                 {
                     b = getFloatVec<3>(value, "Camera path target", &target[0]);
                 }
-                else if(key == SceneKeys::kCamUp)
+                else if (key == SceneKeys::kCamUp)
                 {
                     b = getFloatVec<3>(value, "Camera path up vector", &up[0]);
                 }
 
-                if(b == false)
+                if (b == false)
                 {
                     return false;
                 }
@@ -922,14 +747,14 @@ namespace Falcor
     {
         auto pPath = ObjectPath::create();
 
-        for(auto it = jsonPath.MemberBegin(); it != jsonPath.MemberEnd(); it++)
+        for (auto it = jsonPath.MemberBegin(); it != jsonPath.MemberEnd(); it++)
         {
             const std::string key(it->name.GetString());
             const auto& value = it->value;
 
-            if(key == SceneKeys::kName)
+            if (key == SceneKeys::kName)
             {
-                if(value.IsString() == false)
+                if (value.IsString() == false)
                 {
                     error("Path name should be a string");
                     return nullptr;
@@ -938,9 +763,9 @@ namespace Falcor
                 std::string pathName(value.GetString());
                 pPath->setName(pathName);
             }
-            else if(key == SceneKeys::kPathLoop)
+            else if (key == SceneKeys::kPathLoop)
             {
-                if(value.IsBool() == false)
+                if (value.IsBool() == false)
                 {
                     error("Path loop should be a boolean value");
                     return nullptr;
@@ -949,9 +774,9 @@ namespace Falcor
                 bool b = value.GetBool();
                 pPath->setAnimationRepeat(b);
             }
-            else if(key == SceneKeys::kPathFrames)
+            else if (key == SceneKeys::kPathFrames)
             {
-                if(createPathFrames(pPath.get(), value) == false)
+                if (createPathFrames(pPath.get(), value) == false)
                 {
                     return nullptr;
                 }
@@ -983,15 +808,15 @@ namespace Falcor
 
     bool SceneImporter::parsePaths(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("Paths should be an array");
         }
 
-        for(uint32_t PathID = 0; PathID < jsonVal.Size(); PathID++)
+        for (uint32_t PathID = 0; PathID < jsonVal.Size(); PathID++)
         {
             auto pPath = createPath(jsonVal[PathID]);
-            if(pPath)
+            if (pPath)
             {
                 mScene.addPath(pPath);
             }
@@ -1002,7 +827,7 @@ namespace Falcor
         }
         return true;
     }
-        
+
     bool SceneImporter::parseActivePath(const rapidjson::Value& jsonVal)
     {
         if (mScene.getVersion() != 1)
@@ -1011,7 +836,7 @@ namespace Falcor
         }
 
         // Paths should already be initialized at this stage
-        if(jsonVal.IsString() == false)
+        if (jsonVal.IsString() == false)
         {
             return error("Active path should be a string.");
         }
@@ -1019,16 +844,16 @@ namespace Falcor
         std::string activePath = jsonVal.GetString();
 
         // Find the path
-        for(uint32_t i = 0; i < mScene.getPathCount(); i++)
+        for (uint32_t i = 0; i < mScene.getPathCount(); i++)
         {
-            if(activePath == mScene.getPath(i)->getName())
+            if (activePath == mScene.getPath(i)->getName())
             {
                 mScene.getPath(i)->attachObject(mScene.getActiveCamera());
                 return true;
             }
         }
 
-        return error("Active path \"" + activePath + "\" not found." );
+        return error("Active path \"" + activePath + "\" not found.");
     }
 
     bool SceneImporter::createCamera(const rapidjson::Value& jsonCamera)
@@ -1037,54 +862,54 @@ namespace Falcor
         std::string activePath;
 
         // Go over all the keys
-        for(auto it = jsonCamera.MemberBegin(); it != jsonCamera.MemberEnd(); it++)
+        for (auto it = jsonCamera.MemberBegin(); it != jsonCamera.MemberEnd(); it++)
         {
             std::string key(it->name.GetString());
             const auto& value = it->value;
-            if(key == SceneKeys::kName)
+            if (key == SceneKeys::kName)
             {
                 // Name
-                if(value.IsString() == false)
+                if (value.IsString() == false)
                 {
                     return error("Camera name should be a string value");
                 }
                 pCamera->setName(value.GetString());
             }
-            else if(key == SceneKeys::kCamPosition)
+            else if (key == SceneKeys::kCamPosition)
             {
                 glm::vec3 pos;
-                if(getFloatVec<3>(value, "Camera's position", &pos[0]) == false)
+                if (getFloatVec<3>(value, "Camera's position", &pos[0]) == false)
                 {
                     return false;
                 }
                 pCamera->setPosition(pos);
             }
-            else if(key == SceneKeys::kCamTarget)
+            else if (key == SceneKeys::kCamTarget)
             {
                 glm::vec3 target;
-                if(getFloatVec<3>(value, "Camera's target", &target[0]) == false)
+                if (getFloatVec<3>(value, "Camera's target", &target[0]) == false)
                 {
                     return false;
                 }
                 pCamera->setTarget(target);
             }
-            else if(key == SceneKeys::kCamUp)
+            else if (key == SceneKeys::kCamUp)
             {
                 glm::vec3 up;
-                if(getFloatVec<3>(value, "Camera's up vector", &up[0]) == false)
+                if (getFloatVec<3>(value, "Camera's up vector", &up[0]) == false)
                 {
                     return false;
                 }
                 pCamera->setUpVector(up);
             }
-            else if(key == SceneKeys::kCamFovY) // Version 1
+            else if (key == SceneKeys::kCamFovY) // Version 1
             {
                 if (mScene.getVersion() > 1)
                 {
                     return error("Camera FOV is only valid in scene version 1. Ignoring value.");
                 }
 
-                if(value.IsNumber() == false)
+                if (value.IsNumber() == false)
                 {
                     return error("Camera's FOV should be a number");
                 }
@@ -1107,18 +932,18 @@ namespace Falcor
 
                 pCamera->setFocalLength((float)value.GetDouble());
             }
-            else if(key == SceneKeys::kCamDepthRange)
+            else if (key == SceneKeys::kCamDepthRange)
             {
                 float depthRange[2];
-                if(getFloatVec<2>(value, "Camera's depth-range", depthRange) == false)
+                if (getFloatVec<2>(value, "Camera's depth-range", depthRange) == false)
                 {
                     return false;
                 }
                 pCamera->setDepthRange(depthRange[0], depthRange[1]);
             }
-            else if(key == SceneKeys::kCamAspectRatio)
+            else if (key == SceneKeys::kCamAspectRatio)
             {
-                if(value.IsNumber() == false)
+                if (value.IsNumber() == false)
                 {
                     return error("Camera's aspect ratio should be a number");
                 }
@@ -1145,15 +970,15 @@ namespace Falcor
 
     bool SceneImporter::parseCameras(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("cameras section should be an array of objects.");
         }
 
         // Go over all the objects
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
-            if(createCamera(jsonVal[i]) == false)
+            if (createCamera(jsonVal[i]) == false)
             {
                 return false;
             }
@@ -1172,13 +997,15 @@ namespace Falcor
         mModelLoadFlags = modelLoadFlags;
         mSceneLoadFlags = sceneLoadFlags;
 
-        if(findFileInDataDirectories(filename, fullpath))
+        if (is_set(mSceneLoadFlags, Scene::LoadFlags::GenerateAreaLights))
+        {
+            mModelLoadFlags |= Model::LoadFlags::BuffersAsShaderResource;
+        }
+
+        if (findFileInDataDirectories(filename, fullpath))
         {
             // Load the file
-            std::ifstream fileStream(fullpath);
-            std::stringstream strStream;
-            strStream << fileStream.rdbuf();
-            std::string jsonData = strStream.str();
+            std::string jsonData = readFile(fullpath);
             rapidjson::StringStream JStream(jsonData.c_str());
 
             // Get the file directory
@@ -1188,26 +1015,21 @@ namespace Falcor
             // create the DOM
             mJDoc.ParseStream(JStream);
 
-            if(mJDoc.HasParseError())
+            if (mJDoc.HasParseError())
             {
                 size_t line;
                 line = std::count(jsonData.begin(), jsonData.begin() + mJDoc.GetErrorOffset(), '\n');
                 return error(std::string("JSON Parse error in line ") + std::to_string(line) + ". " + rapidjson::GetParseError_En(mJDoc.GetParseError()));
             }
 
-            if(topLevelLoop() == false)
+            if (topLevelLoop() == false)
             {
                 return false;
             }
 
-            if(is_set(mSceneLoadFlags, Scene::LoadFlags::GenerateAreaLights))
+            if (is_set(mSceneLoadFlags, Scene::LoadFlags::GenerateAreaLights))
             {
                 mScene.createAreaLights();
-            }
-
-            if (is_set(mSceneLoadFlags, Scene::LoadFlags::StoreMaterialHistory) == false)
-            {
-                mScene.deleteMaterialHistory();
             }
 
             return true;
@@ -1220,18 +1042,13 @@ namespace Falcor
 
     bool SceneImporter::parseAmbientIntensity(const rapidjson::Value& jsonVal)
     {
-        glm::vec3 ambient;
-        if(getFloatVec<3>(jsonVal, SceneKeys::kAmbientIntensity, &ambient[0]))
-        {
-            mScene.setAmbientIntensity(ambient);
-            return true;
-        }
-        return false;
+        logWarning("SceneImporter: Global ambient term is no longer supported. Ignoring value.");
+        return true;
     }
 
     bool SceneImporter::parseLightingScale(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsNumber() == false)
+        if (jsonVal.IsNumber() == false)
         {
             return error("Lighting scale should be a number.");
         }
@@ -1243,7 +1060,7 @@ namespace Falcor
 
     bool SceneImporter::parseCameraSpeed(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsNumber() == false)
+        if (jsonVal.IsNumber() == false)
         {
             return error("Camera speed should be a number.");
         }
@@ -1256,7 +1073,7 @@ namespace Falcor
     bool SceneImporter::parseActiveCamera(const rapidjson::Value& jsonVal)
     {
         // Cameras should already be initialized at this stage
-        if(jsonVal.IsString() == false)
+        if (jsonVal.IsString() == false)
         {
             return error("Active camera should be a string.");
         }
@@ -1264,9 +1081,9 @@ namespace Falcor
         std::string activeCamera = jsonVal.GetString();
 
         // Find the camera
-        for(uint32_t i = 0; i < mScene.getCameraCount(); i++)
+        for (uint32_t i = 0; i < mScene.getCameraCount(); i++)
         {
-            if(activeCamera == mScene.getCamera(i)->getName())
+            if (activeCamera == mScene.getCamera(i)->getName())
             {
                 mScene.setActiveCamera(i);
                 return true;
@@ -1278,7 +1095,7 @@ namespace Falcor
 
     bool SceneImporter::parseVersion(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsUint() == false)
+        if (jsonVal.IsUint() == false)
         {
             return error("value should be an unsigned integer number");
         }
@@ -1286,31 +1103,69 @@ namespace Falcor
         return true;
     }
 
+    bool SceneImporter::parseSceneUnit(const rapidjson::Value& jsonVal)
+    {
+        if (jsonVal.IsNumber() == false)
+        {
+            return error("Scene unit should be a number.");
+        }
+
+        float f = (float)(jsonVal.GetDouble());
+        mScene.setSceneUnit(f);
+        return true;
+    }
+
+    bool SceneImporter::parseEnvMap(const rapidjson::Value& jsonVal)
+    {
+        if (mScene.getEnvironmentMap())
+        {
+            return error("Scene can't have more then one environment map");
+        }
+        
+        if (jsonVal.IsString() == false)
+        {
+            return error(std::string(SceneKeys::kEnvMap) + " should be a string");
+        }
+
+        std::string filename = mDirectory + '/' + jsonVal.GetString();
+        if (doesFileExist(filename) == false)
+        {
+            if (findFileInDataDirectories(jsonVal.GetString(), filename) == false)
+            {
+                return error("Can't find environment map file " + std::string(jsonVal.GetString()));
+            }
+        }
+
+        auto pTex = createTextureFromFile(filename, false, true);
+        mScene.setEnvironmentMap(pTex);
+        return true;
+    }
+
     bool SceneImporter::parseUserDefinedSection(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsObject() == false)
+        if (jsonVal.IsObject() == false)
         {
             return error("User defined section should be a JSON object.");
         }
 
-        for(auto it = jsonVal.MemberBegin(); it != jsonVal.MemberEnd(); it++)
+        for (auto it = jsonVal.MemberBegin(); it != jsonVal.MemberEnd(); it++)
         {
             bool b;
             Scene::UserVariable userVar;
             std::string name(it->name.GetString());
             const auto& value = it->value;
             // Check if this is a vector
-            if(value.IsArray())
+            if (value.IsArray())
             {
-                for(uint32_t i = 0; i < value.Size(); i++)
+                for (uint32_t i = 0; i < value.Size(); i++)
                 {
-                    if(value[i].IsNumber() == false)
+                    if (value[i].IsNumber() == false)
                     {
                         return error("User defined section contains an array, but some of the elements are not numbers.");
                     }
                 }
 
-                switch(value.Size())
+                switch (value.Size())
                 {
                 case 2:
                     userVar.type = Scene::UserVariable::Type::Vec2;
@@ -1329,7 +1184,7 @@ namespace Falcor
                     b = getFloatVecAnySize(value, "vector of floats", userVar.vector);
                     break;
                 }
-                if(b == false)
+                if (b == false)
                 {
                     return false;
                 }
@@ -1338,37 +1193,37 @@ namespace Falcor
             {
                 // Not an array. Must be a literal
                 // The way rapidjson works, a uint is also an int, and a 32-bit number is also a 64-bit number, so the order in which we check the Type matters
-                if(value.IsUint())
+                if (value.IsUint())
                 {
                     userVar.type = Scene::UserVariable::Type::Uint;
                     userVar.u32 = value.GetUint();
                 }
-                else if(value.IsInt())
+                else if (value.IsInt())
                 {
                     userVar.type = Scene::UserVariable::Type::Int;
                     userVar.i32 = value.GetInt();
                 }
-                else if(value.IsUint64())
+                else if (value.IsUint64())
                 {
                     userVar.type = Scene::UserVariable::Type::Uint64;
                     userVar.u64 = value.GetUint64();
                 }
-                else if(value.IsInt64())
+                else if (value.IsInt64())
                 {
                     userVar.type = Scene::UserVariable::Type::Int64;
                     userVar.i64 = value.GetInt64();
                 }
-                else if(value.IsDouble())
+                else if (value.IsDouble())
                 {
                     userVar.type = Scene::UserVariable::Type::Double;
                     userVar.d64 = value.GetDouble();
                 }
-                else if(value.IsString())
+                else if (value.IsString())
                 {
                     userVar.type = Scene::UserVariable::Type::String;
                     userVar.str = value.GetString();
                 }
-                else if(value.IsBool())
+                else if (value.IsBool())
                 {
                     userVar.type = Scene::UserVariable::Type::Bool;
                     userVar.b = value.GetBool();
@@ -1387,10 +1242,10 @@ namespace Falcor
     {
         // Find the file
         std::string fullpath = mDirectory + '/' + include;
-        if(doesFileExist(fullpath) == false)
+        if (doesFileExist(fullpath) == false)
         {
             // Look in the data directories
-            if(findFileInDataDirectories(include, fullpath) == false)
+            if (findFileInDataDirectories(include, fullpath) == false)
             {
                 return error("Can't find include file " + include);
             }
@@ -1398,7 +1253,7 @@ namespace Falcor
 
         Scene::SharedPtr pScene = Scene::create();
         SceneImporter::loadScene(*pScene, fullpath, mModelLoadFlags, mSceneLoadFlags);
-        if(pScene == nullptr)
+        if (pScene == nullptr)
         {
             return false;
         }
@@ -1409,20 +1264,20 @@ namespace Falcor
 
     bool SceneImporter::parseIncludes(const rapidjson::Value& jsonVal)
     {
-        if(jsonVal.IsArray() == false)
+        if (jsonVal.IsArray() == false)
         {
             return error("Include section should be an array of strings");
         }
 
-        for(uint32_t i = 0; i < jsonVal.Size(); i++)
+        for (uint32_t i = 0; i < jsonVal.Size(); i++)
         {
-            if(jsonVal[i].IsString() == false)
+            if (jsonVal[i].IsString() == false)
             {
                 return error("Include element should be a string");
             }
 
             const std::string include = jsonVal[i].GetString();
-            if(loadIncludeFile(include) == false)
+            if (loadIncludeFile(include) == false)
             {
                 return false;
             }
@@ -1466,13 +1321,15 @@ namespace Falcor
     {
         // The order matters here.
         {SceneKeys::kVersion, &SceneImporter::parseVersion},
+        {SceneKeys::kSceneUnit, &SceneImporter::parseSceneUnit},
+        {SceneKeys::kEnvMap, &SceneImporter::parseEnvMap},
         {SceneKeys::kAmbientIntensity, &SceneImporter::parseAmbientIntensity},
         {SceneKeys::kLightingScale, &SceneImporter::parseLightingScale},
         {SceneKeys::kCameraSpeed, &SceneImporter::parseCameraSpeed},
 
-        {SceneKeys::kMaterials, &SceneImporter::parseMaterials},
         {SceneKeys::kModels, &SceneImporter::parseModels},
         {SceneKeys::kLights, &SceneImporter::parseLights},
+        {SceneKeys::kLightProbes, &SceneImporter::parseLightProbes},
         {SceneKeys::kCameras, &SceneImporter::parseCameras},
         {SceneKeys::kActiveCamera, &SceneImporter::parseActiveCamera},  // Should come after ParseCameras
         {SceneKeys::kUserDefined, &SceneImporter::parseUserDefinedSection},
@@ -1485,22 +1342,22 @@ namespace Falcor
     bool SceneImporter::validateSceneFile()
     {
         // Make sure the top-level is valid
-        for(auto it = mJDoc.MemberBegin(); it != mJDoc.MemberEnd(); it++)
+        for (auto it = mJDoc.MemberBegin(); it != mJDoc.MemberEnd(); it++)
         {
             bool found = false;
             const std::string name(it->name.GetString());
 
-            for(uint32_t i = 0; i < arraysize(kFunctionTable); i++)
+            for (uint32_t i = 0; i < arraysize(kFunctionTable); i++)
             {
                 // Check that we support this value
-                if(kFunctionTable[i].token == name)
+                if (kFunctionTable[i].token == name)
                 {
                     found = true;
                     break;
                 }
             }
 
-            if(found == false)
+            if (found == false)
             {
                 return error("Invalid key found in top-level object. Key == " + std::string(it->name.GetString()) + ".");
             }
@@ -1510,18 +1367,18 @@ namespace Falcor
 
     bool SceneImporter::topLevelLoop()
     {
-        if(validateSceneFile() == false)
+        if (validateSceneFile() == false)
         {
             return false;
         }
 
-        for(uint32_t i = 0; i < arraysize(kFunctionTable); i++)
+        for (uint32_t i = 0; i < arraysize(kFunctionTable); i++)
         {
             const auto& jsonMember = mJDoc.FindMember(kFunctionTable[i].token.c_str());
-            if(jsonMember != mJDoc.MemberEnd())
+            if (jsonMember != mJDoc.MemberEnd())
             {
                 auto a = kFunctionTable[i].func;
-                if((this->*a)(jsonMember->value) == false)
+                if ((this->*a)(jsonMember->value) == false)
                 {
                     return false;
                 }

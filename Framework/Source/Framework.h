@@ -29,11 +29,29 @@
 #include "FalcorConfig.h"
 #include <stdint.h>
 #include <memory>
-#include "glm/glm.hpp"
 #include <iostream>
 #include "Utils/Logger.h"
+#include "Utils/Scripting/Scripting.h"
 
+#define GLM_FORCE_CTOR_INIT
+#define GLM_ENABLE_EXPERIMENTAL
+#include "glm/glm.hpp"
 using namespace glm;
+
+// Define DLL export/import
+#ifdef _MSC_VER
+#define falcorexport __declspec(dllexport)
+#define falcorimport __declspec(dllimport)
+#elif defined(__GNUC__) // _MSC_VER
+#define falcorexport __attribute__ ((visibility ("default")))
+#define falcorimport extern
+#endif // _MSC_VER
+
+#ifdef BUILDING_SHARED_DLL
+#define dlldecl falcorexport
+#else   // BUILDING_SHARED_DLL
+#define dlldecl falcorimport
+#endif // BUILDING_SHARED_DLL
 
 #ifndef arraysize
 #define arraysize(a) (sizeof(a)/sizeof(a[0]))
@@ -74,15 +92,9 @@ using namespace glm;
 #define safe_delete(_a) {delete _a; _a = nullptr;}
 #define safe_delete_array(_a) {delete[] _a; _a = nullptr;}
 #define align_to(_alignment, _val) (((_val + _alignment - 1) / _alignment) * _alignment)
-
-#if defined(_MSC_VER)
-#define FALCOR_DEPRECATED(MESSAGE) __declspec(deprecated(MESSAGE))
-#define forceinline __forceinline
-#else
-// TODO: add cases for clang/gcc when/if needed
-#define FALCOR_DEPRECATED(MESSAGE) /* emtpy */
-#define forceinline __attribute__((always_inline))
-#endif
+#define stringize(a) #a
+#define concat_strings_(a, b) a##b
+#define concat_strings(a, b) concat_strings_(a, b)
 
 namespace Falcor
 {
@@ -109,8 +121,14 @@ namespace Falcor
         Domain,         ///< Domain shader (AKA Tessellation evaluation shader)
         Compute,        ///< Compute shader
 
-        Extended,       ///< An extended, non-standard shader type
-
+#ifdef FALCOR_D3D12
+        RayGeneration,  ///< Ray generation shader
+        Intersection,   ///< Intersection shader
+        AnyHit,         ///< Any hit shader
+        ClosestHit,     ///< Closest hit shader
+        Miss,           ///< Miss shader
+        Callable,       ///< Callable shader
+#endif
         Count           ///< Shader Type count
     };
 
@@ -139,6 +157,20 @@ namespace Falcor
     };
 
     enum_class_operators(FboAttachmentType);
+
+
+    enum class ComparisonFunc
+    {
+        Disabled,       ///< Comparison is disabled
+        Never,          ///< Comparison always fails
+        Always,         ///< Comparison always succeeds
+        Less,           ///< Passes if source is less than the destination
+        Equal,          ///< Passes if source is equal to the destination
+        NotEqual,       ///< Passes if source is not equal to the destination
+        LessEqual,      ///< Passes if source is less than or equal to the destination
+        Greater,        ///< Passes if source is greater than to the destination
+        GreaterEqual,   ///< Passes if source is greater than or equal to the destination
+    };
 
     /** Clamps a value within a range.
         \param[in] val Value to clamp
@@ -194,10 +226,6 @@ namespace Falcor
 #error Undefined falcor backend. Make sure that a backend is selected in "FalcorConfig.h"
 #endif
 
-#if defined(FALCOR_D3D12) || defined(FALCOR_VK)
-#define FALCOR_LOW_LEVEL_API
-#endif
-
 namespace Falcor
 {
     /** Converts ShaderType enum elements to a string.
@@ -220,12 +248,58 @@ namespace Falcor
             return "geometry";
         case ShaderType::Compute:
             return "compute";
+#ifdef FALCOR_D3D12
+        case ShaderType::RayGeneration:
+            return "raygeneration";
+        case ShaderType::Intersection:
+            return "intersection";
+        case ShaderType::AnyHit:
+            return "anyhit";
+        case ShaderType::ClosestHit:
+            return "closesthit";
+        case ShaderType::Miss:
+            return "miss";
+        case ShaderType::Callable:
+            return "callable";
+#endif
         default:
             should_not_get_here();
             return "";
         }
     }
+
+
+#define compare_str(a) case ComparisonFunc::a: return #a
+    inline std::string to_string(ComparisonFunc f)
+    {
+        switch (f)
+        {
+            compare_str(Disabled);
+            compare_str(LessEqual);
+            compare_str(GreaterEqual);
+            compare_str(Less);
+            compare_str(Greater);
+            compare_str(Equal);
+            compare_str(NotEqual);
+            compare_str(Always);
+            compare_str(Never);
+        default: should_not_get_here(); return "";
+        }
+    }
+#undef compare_str
 }
+
+#if defined(_MSC_VER)
+#define deprecate(_ver_, _msg_) __declspec(deprecated("This function is deprecated and will be removed in Falcor " ##  _ver_ ## ". " ## _msg_))
+#define forceinline __forceinline
+using DllHandle = HMODULE;
+#define suppress_deprecation __pragma(warning(suppress : 4996));
+#elif defined(__GNUC__)
+#define deprecate(_ver_, _msg_) __attribute__ ((deprecated("This function is deprecated and will be removed in Falcor " _ver_ ". " _msg_)))
+#define forceinline __attribute__((always_inline))
+using DllHandle = void*;
+#define suppress_deprecation _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
+#endif
 
 #include "Utils/Platform/OS.h"
 #include "Utils/Profiler.h"

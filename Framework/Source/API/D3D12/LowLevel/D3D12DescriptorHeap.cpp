@@ -33,7 +33,7 @@ namespace Falcor
 {
     D3D12DescriptorHeap::D3D12DescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t chunkCount) : mChunkCount(chunkCount), mType (type)
     {
-		ID3D12DevicePtr pDevice = gpDevice->getApiHandle();
+        DeviceHandle pDevice = gpDevice->getApiHandle();
         mDescriptorSize = pDevice->GetDescriptorHandleIncrementSize(type);
     }
 
@@ -41,7 +41,7 @@ namespace Falcor
 
     D3D12DescriptorHeap::SharedPtr D3D12DescriptorHeap::create(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t descCount, bool shaderVisible)
     {
-		ID3D12DevicePtr pDevice = gpDevice->getApiHandle();
+        DeviceHandle pDevice = gpDevice->getApiHandle();
 
         uint32_t chunkCount = (descCount + kDescPerChunk - 1) / kDescPerChunk;
         D3D12DescriptorHeap::SharedPtr pHeap = SharedPtr(new D3D12DescriptorHeap(type, chunkCount));
@@ -104,18 +104,23 @@ namespace Falcor
 
             if (mpCurrentChunk->allocCount == 0)
             {
-                mpCurrentChunk->reset();
-                return true;
+                // Chunk is empty, doesn't necessarily mean it has enough space, need to check
+                if (mpCurrentChunk->chunkCount * kDescPerChunk >= descCount)
+                {
+                    mpCurrentChunk->reset();
+                    return true;
+                }
             }
         }
 
         // Need a new chunk
         uint32_t chunkCount = (descCount + kDescPerChunk - 1) / kDescPerChunk;
 
-        // TODO: Optimize it for the case that chunkCount > 1 - mFreeChunks can be sorted by offset to find contiguous chunks
-        if (chunkCount == 1 && (mFreeChunks.empty() == false))
+        // Take chunk from top of sorted free list if chunk is large enough.
+        // TODO: Sort by offset to find larger contiguous chunks if it fails.
+        if (!mFreeChunks.empty() && (chunkCount <= mFreeChunks.top()->chunkCount))
         {
-            mpCurrentChunk = mFreeChunks.front();
+            mpCurrentChunk = mFreeChunks.top();
             mFreeChunks.pop();
             mpCurrentChunk->reset();
             return true;

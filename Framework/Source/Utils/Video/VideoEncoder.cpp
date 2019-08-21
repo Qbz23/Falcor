@@ -115,7 +115,7 @@ namespace Falcor
         // Some formats want stream headers to be separate
         if(pCtx->oformat->flags & AVFMT_GLOBALHEADER)
         {
-            pCodecCtx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+            pCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
         }
 
         return pCodecCtx;
@@ -226,9 +226,10 @@ namespace Falcor
 
     bool VideoEncoder::init(const Desc& desc)
     {
-        // Register the codecs
+        // av_register_all() is deprecated since 58.9.100, but Linux repos may not get a newer version, so this call cannot be completely removed.
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 9, 100)
         av_register_all();
-
+#endif
         // create the output context
         avformat_alloc_output_context2(&mpOutputContext, nullptr, nullptr, mFilename.c_str());
         if(mpOutputContext == nullptr)
@@ -391,31 +392,32 @@ namespace Falcor
         }
     }
 
-    const std::string VideoEncoder::getSupportedContainerForCodec(CodecID codec)
+    FileDialogFilterVec VideoEncoder::getSupportedContainerForCodec(CodecID codec)
     {
-        const std::string AVI = std::string("AVI (Audio Video Interleaved)") + '\0' + "*.avi" + '\0';
-        const std::string MP4 = std::string("MP4 (MPEG-4 Part 14)") + '\0' + "*.mp4" + '\0';
-        const std::string MKV = std::string("MKV (Matroska)\0*.mkv") + '\0' + "*.mkv" + '\0';
+        FileDialogFilterVec filters;
+        const FileDialogFilter AVI{ "avi", "AVI (Audio Video Interleaved)"};
+        const FileDialogFilter MP4{ "mp4", "MP4 (MPEG-4 Part 14)"};
+        const FileDialogFilter MKV{ "mkv", "MKV (Matroska)\0*.mkv" };
 
-        std::string s;
         switch(codec)
         {
         case VideoEncoder::CodecID::RawVideo:
-            s += AVI;
+            filters.push_back(AVI);
             break;
         case VideoEncoder::CodecID::H264:
         case VideoEncoder::CodecID::MPEG2:
         case VideoEncoder::CodecID::MPEG4:
-            s += MP4 + MKV + AVI;
+            filters.push_back(MP4);
+            filters.push_back(MKV);
+            filters.push_back(AVI);
             break;
         case VideoEncoder::CodecID::HEVC:
-            s += MP4 + MKV;
+            filters.push_back(MP4);
+            filters.push_back(MKV);
             break;
         default:
             should_not_get_here();
         }
-
-        s += "\0";
-        return s;
+        return filters;
     }
 }

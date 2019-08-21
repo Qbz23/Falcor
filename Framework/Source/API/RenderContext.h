@@ -42,16 +42,38 @@
 
 namespace Falcor
 {
+#ifdef FALCOR_D3D12
+    class RtProgramVars;
+    class RtState;
+#endif
 
     /** The rendering context. Use it to bind state and dispatch calls to the GPU
     */
-    class RenderContext : public ComputeContext, public inherit_shared_from_this<ComputeContext, RenderContext>
+    class RenderContext : public ComputeContext
     {
     public:
         using SharedPtr = std::shared_ptr<RenderContext>;
         using SharedConstPtr = std::shared_ptr<const RenderContext>;
 
         ~RenderContext();
+
+        /**
+            This flag control which aspects of the GraphicState will be bound into the pipeline before drawing.
+            It is useful in cases where the user wants to set a specific object using a raw-API call before calling one of the draw functions
+        */
+        enum class StateBindFlags : uint32_t
+        {
+            None            = 0x0,              ///<Bind Nothing
+            Vars            = 0x1,              ///<Bind Graphics Vars (root signature and sets)
+            Topology        = 0x2,              ///<Bind Primitive Topology
+            Vao             = 0x4,              ///<Bind Vao
+            Fbo             = 0x8,              ///<Bind Fbo
+            Viewports       = 0x10,             ///<Bind Viewport
+            Scissors        = 0x20,             ///<Bind scissors
+            PipelineState   = 0x40,             ///<Bind Pipeline State Object
+            SamplePositions = 0x80,             ///<Set the programmable sample positions
+            All             = uint32_t(-1)
+        };
 
         /** Create a new object.
         */
@@ -164,13 +186,35 @@ namespace Falcor
         */
         void popGraphicsState();
         
-        /** Reset the context
-        */
-        void reset() override;
-
         /** Submit the command list
         */
         void flush(bool wait = false) override;
+
+        /** Tell the render context what it should and shouldn't bind before drawing
+        */
+        void setBindFlags(StateBindFlags flags) { mBindFlags = flags; }
+
+        /** Get the render context bind flags so the user can restore the state after setBindFlags()
+        */
+        StateBindFlags getBindFlags() const { return mBindFlags; }
+
+        /** Resolve an entire multi-sampled resource. The dst and src resources must have the same dimensions, array-size, mip-count and format.
+            If any of these properties don't match, you'll have to use `resolveSubresource`
+        */
+        void resolveResource(const Texture::SharedPtr& pSrc, const Texture::SharedPtr& pDst);
+
+        /** Resolve a multi-sampled sub-resource
+        */
+        void resolveSubresource(const Texture::SharedPtr& pSrc, uint32_t srcSubresource, const Texture::SharedPtr& pDst, uint32_t dstSubresource);
+
+#ifdef FALCOR_D3D12
+        /** Submit a raytrace command. This function doesn't change the state of the render-context. Graphics/compute vars and state will stay the same
+        */
+        deprecate("3.3", "Ray dispatch now accepts depth as a parameter. Using the deprecated version will assume depth = 1.")
+        void raytrace(std::shared_ptr<RtProgramVars> pVars, std::shared_ptr<RtState> pState, uint32_t width, uint32_t height);
+        void raytrace(std::shared_ptr<RtProgramVars> pVars, std::shared_ptr<RtState> pState, uint32_t width, uint32_t height, uint32_t depth);
+#endif
+
     private:
         RenderContext();
         GraphicsVars::SharedPtr mpGraphicsVars;
@@ -180,9 +224,6 @@ namespace Falcor
         std::stack<GraphicsState::SharedPtr> mPipelineStateStack;
         std::stack<GraphicsVars::SharedPtr> mpGraphicsVarsStack;
 
-        static CommandSignatureHandle spDrawCommandSig;
-        static CommandSignatureHandle spDrawIndexCommandSig;
-
         /** Creates command signatures for DrawIndirect, DrawIndexedIndirect. Also calls
         compute context's initDispatchCommandSignature() to create command signature for dispatchIndirect
         */
@@ -191,5 +232,35 @@ namespace Falcor
 
         // Internal functions used by the API layers
         void prepareForDraw();
+        StateBindFlags mBindFlags = StateBindFlags::All;
     };
+
+    enum_class_operators(RenderContext::StateBindFlags);
+
+#ifndef FALCOR_VK
+    struct BlitData
+    {
+        FullScreenPass::UniquePtr pPass;
+        GraphicsVars::SharedPtr pVars;
+        GraphicsState::SharedPtr pState;
+
+        Sampler::SharedPtr pLinearSampler;
+        Sampler::SharedPtr pPointSampler;
+
+        ConstantBuffer::SharedPtr pSrcRectBuffer;
+        vec2 prevSrcRectOffset = vec2(0,0);
+        vec2 prevSrcReftScale = vec2(0,0);
+
+        // Variable offsets in constant buffer
+        size_t offsetVarOffset = ConstantBuffer::kInvalidOffset;
+        size_t scaleVarOffset = ConstantBuffer::kInvalidOffset;;
+
+        ProgramReflection::BindLocation texBindLoc;
+        ProgramReflection::BindLocation samplerBindLoc;
+    };
+
+    dlldecl BlitData gBlitData;
+#endif
+    dlldecl CommandSignatureHandle gpDrawCommandSig;
+    dlldecl CommandSignatureHandle gpDrawIndexCommandSig;
 }

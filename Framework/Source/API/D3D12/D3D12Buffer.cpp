@@ -62,13 +62,13 @@ namespace Falcor
 
     size_t getBufferDataAlignment(const Buffer* pBuffer)
     {
-		// This in order of the alignment size
-		const auto& bindFlags = pBuffer->getBindFlags();
-		if (is_set(bindFlags, Buffer::BindFlags::Constant)) return D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-		if (is_set(bindFlags, Buffer::BindFlags::Index)) return sizeof(uint32_t); // This actually depends on the size of the index, but we can handle losing 2 bytes
+        // This in order of the alignment size
+        const auto& bindFlags = pBuffer->getBindFlags();
+        if (is_set(bindFlags, Buffer::BindFlags::Constant)) return D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        if (is_set(bindFlags, Buffer::BindFlags::Index)) return sizeof(uint32_t); // This actually depends on the size of the index, but we can handle losing 2 bytes
 
-		return D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
-	}
+        return D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
+    }
 
     void* mapBufferApi(const Buffer::ApiHandle& apiHandle, size_t size)
     {
@@ -87,7 +87,7 @@ namespace Falcor
 
         if (mCpuAccess == CpuAccess::Write)
         {
-            mState = Resource::State::GenericRead;
+            mState.global = Resource::State::GenericRead;
             if(hasInitData == false) // Else the allocation will happen when updating the data
             {
                 mDynamicData = gpDevice->getResourceAllocator()->allocate(mSize, getBufferDataAlignment(this));
@@ -96,13 +96,14 @@ namespace Falcor
         }
         else if (mCpuAccess == CpuAccess::Read && mBindFlags == BindFlags::None)
         {
-            mState = Resource::State::CopyDest;
-            mApiHandle = createBuffer(mState, mSize, kReadbackHeapProps, mBindFlags);
+            mState.global = Resource::State::CopyDest;
+            mApiHandle = createBuffer(mState.global, mSize, kReadbackHeapProps, mBindFlags);
         }
         else
         {
-            mState = Resource::State::Common;
-            mApiHandle = createBuffer(mState, mSize, kDefaultHeapProps, mBindFlags);
+            mState.global = Resource::State::Common;
+            if (is_set(mBindFlags, BindFlags::AccelerationStructure)) mState.global = Resource::State::AccelerationStructure;
+            mApiHandle = createBuffer(mState.global, mSize, kDefaultHeapProps, mBindFlags);
         }
 
         return true;
@@ -143,7 +144,6 @@ namespace Falcor
     {
         if (handle == nullptr)
         {
-
             DescriptorHeap* pHeap = forClear ? gpDevice->getCpuUavDescriptorHeap().get() : gpDevice->getUavDescriptorHeap().get();
             handle = pHeap->allocateEntry();
             gpDevice->getApiHandle()->CreateUnorderedAccessView(apiHandle, nullptr, &desc, handle->getCpuHandle());

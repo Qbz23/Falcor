@@ -39,6 +39,10 @@ struct aiNode;
 struct aiAnimation;
 struct aiMesh;
 struct aiMaterial;
+namespace Assimp 
+{ 
+    class Importer; 
+}
 
 namespace Falcor
 {
@@ -81,11 +85,11 @@ namespace Falcor
 
         Animation::UniquePtr createAnimation(const aiAnimation* pAiAnim);
 
-        Mesh::SharedPtr createMesh(const aiMesh* pAiMesh, bool forcePatch = false);
+        Mesh::SharedPtr createMesh(aiMesh* pAiMesh);
         VertexLayout::SharedPtr createVertexLayout(const aiMesh* pAiMesh);
         Buffer::SharedPtr createIndexBuffer(const aiMesh* pAiMesh);
         Buffer::SharedPtr createVertexBuffer(const aiMesh* pAiMesh, const VertexBufferLayout* pLayout, const uint8_t* pBoneIds, const vec4* pBoneWeights);
-        void loadTextures(const aiMaterial* pAiMaterial, const std::string& folder, BasicMaterial* pMaterial, bool isObjFile, bool useSrgb);
+        void loadTextures(const aiMaterial* pAiMaterial, const std::string& folder, Material* pMaterial, bool isObjFile, bool useSrgb);
         Material::SharedPtr createMaterial(const aiMaterial* pAiMaterial, const std::string& folder, bool isObjFile, bool useSrgb);
 
         // Checks whether a node or its name corresponds to a used bone or node in the skeleton hierarchy

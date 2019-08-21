@@ -55,8 +55,9 @@ namespace Falcor
             using SharedPtr = std::shared_ptr<Allocation>;
             ~Allocation();
 
-            CpuHandle getCpuHandle(uint32_t index) const { assert(index < mDescCount); return mpHeap->getCpuHandle(index + mBaseIndex); }; // Index is relative to the allocation
-            GpuHandle getGpuHandle(uint32_t index) const { assert(index < mDescCount); return mpHeap->getGpuHandle(index + mBaseIndex); }; // Index is relative to the allocation
+            uint32_t getHeapEntryIndex(uint32_t index) const { assert(index < mDescCount); return index + mBaseIndex; }
+            CpuHandle getCpuHandle(uint32_t index) const { return mpHeap->getCpuHandle(getHeapEntryIndex(index)); } // Index is relative to the allocation
+            GpuHandle getGpuHandle(uint32_t index) const { return mpHeap->getGpuHandle(getHeapEntryIndex(index)); } // Index is relative to the allocation
             
         private:
             friend D3D12DescriptorHeap;
@@ -69,7 +70,7 @@ namespace Falcor
         };
         
         Allocation::SharedPtr allocateDescriptors(uint32_t count);
-        ApiHandle getApiHandle() const { return mApiHandle; }
+        const ApiHandle& getApiHandle() const { return mApiHandle; }
         D3D12_DESCRIPTOR_HEAP_TYPE getType() const { return mType; }
 
         uint32_t getReservedChunkCount() const { return mChunkCount; }
@@ -105,9 +106,18 @@ namespace Falcor
             uint32_t currentDesc = 0;
         };
 
+        // Helper to compare Chunk::SharedPtr types
+        struct ChunkComparator
+        {
+            bool operator()(Chunk::SharedPtr lhs, Chunk::SharedPtr rhs)
+            {
+                return lhs->chunkCount < rhs->chunkCount;
+            }
+        };
+
         Chunk::SharedPtr mpCurrentChunk;
         bool setupCurrentChunk(uint32_t descCount);
         void releaseChunk(Chunk::SharedPtr pChunk);
-        std::queue<Chunk::SharedPtr> mFreeChunks;
+        std::priority_queue<Chunk::SharedPtr, std::vector<Chunk::SharedPtr>, ChunkComparator> mFreeChunks;  // Priority queue that keeps free list sorted by chunk count (largest first)
     };
 }

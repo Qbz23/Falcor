@@ -331,6 +331,24 @@ namespace Falcor
 #endif
     }
 
+    static ReflectionVar::Modifier getModifierFromPath(const ReflectionPath* pPath, SlangParameterCategory category)
+    {
+        ReflectionVar::Modifier mod = ReflectionVar::Modifier::None;
+        for (auto pp = pPath; pp; pp = pp->pParent)
+        {
+            if (pp->pVar)
+            {
+                const auto* pSlangMod = pp->pVar->findModifier(Modifier::ID::Shared);
+                if (pSlangMod)
+                {
+                    mod |= ReflectionVar::Modifier::Shared;
+                    break;
+                }
+            }
+        }
+        return mod;
+    }
+
     static size_t getRegisterIndexFromPath(const ReflectionPath* pPath, SlangParameterCategory category)
     {
         uint32_t offset = 0;
@@ -455,8 +473,9 @@ namespace Falcor
 
     ReflectionType::SharedPtr reflectBasicType(TypeLayoutReflection* pSlangType, const ReflectionPath* pPath)
     {
+        const bool isRowMajor = pSlangType->getMatrixLayoutMode() == SLANG_MATRIX_LAYOUT_ROW_MAJOR;
         ReflectionBasicType::Type type = getVariableType(pSlangType->getScalarType(), pSlangType->getRowCount(), pSlangType->getColumnCount());
-        ReflectionType::SharedPtr pType = ReflectionBasicType::create(getUniformOffset(pPath), type, false, pSlangType->getSize());
+        ReflectionType::SharedPtr pType = ReflectionBasicType::create(getUniformOffset(pPath), type, isRowMajor, pSlangType->getSize());
         return pType;
     }
 
@@ -512,7 +531,8 @@ namespace Falcor
             uint32_t index = (uint32_t)getRegisterIndexFromPath(pPath, category);
             uint32_t space = getRegisterSpaceFromPath(pPath, category);
             uint32_t descOffset = getDescOffsetFromPath(pPath, max(1u, pType->getTotalArraySize()), category);
-            pVar = ReflectionVar::create(name, pType, index, descOffset, space);
+            ReflectionVar::Modifier modifier = getModifierFromPath(pPath, category);
+            pVar = ReflectionVar::create(name, pType, index, descOffset, space, modifier);
         }
         else
         {
@@ -600,9 +620,9 @@ namespace Falcor
         }
     }
 
-    ProgramReflection::SharedPtr ProgramReflection::create(slang::ShaderReflection* pSlangReflector, std::string& log)
+    ProgramReflection::SharedPtr ProgramReflection::create(slang::ShaderReflection* pSlangReflector, ResourceScope scopeToReflect, std::string& log)
     {
-        return SharedPtr(new ProgramReflection(pSlangReflector, log));
+        return SharedPtr(new ProgramReflection(pSlangReflector, scopeToReflect, log));
     }
 
     ProgramReflection::BindType getBindTypeFromSetType(DescriptorSet::Type type)
@@ -627,8 +647,98 @@ namespace Falcor
         }
     }
 
-    ProgramReflection::ProgramReflection(slang::ShaderReflection* pSlangReflector, std::string& log)
+    ParameterBlockReflection::SharedPtr ParameterBlockReflection::merge(const ParameterBlockReflection& first, const ParameterBlockReflection& second)
     {
+        ParameterBlockReflection::SharedPtr pNew = SharedPtr(new ParameterBlockReflection(first));
+
+        const auto& pOtherStruct = second.mpResourceVars;
+        for (uint32_t r = 0; r < pOtherStruct->getMemberCount(); r++)
+        {
+            const auto& pMember = pOtherStruct->getMember(r);
+            const auto& memberName = pMember->getName();
+            const auto& pMyMember = pNew->mpResourceVars->getMember(memberName);
+            if (pMyMember == nullptr)
+            {
+                pNew->addResource(pMember);
+            }
+            else
+            {
+                if (*pMyMember != *pMember)
+                {
+                    logError("Can't merge ParameterBlockReflection, one of the members has a different definition");
+                    return nullptr;
+                }
+            }
+        }
+        return pNew;
+    }
+
+    ProgramReflection::SharedPtr ProgramReflection::merge(const ProgramReflection& first, const ProgramReflection& second)
+    {
+        SharedPtr pNew = SharedPtr(new ProgramReflection(first));
+        ParameterBlockReflection::SharedPtr pNewDefaultBlock;
+
+        for (uint32_t b = 0; b < second.getParameterBlockCount(); b++)
+        {
+            ParameterBlockReflection::SharedConstPtr pBlock = second.getParameterBlock(b);
+            const std::string& blockName = pBlock->getName();
+            // See if this block exists
+            if (pNew->mParameterBlocksIndices.find(blockName) == pNew->mParameterBlocksIndices.end())
+            {
+                // New block, just add it
+                pNew->addParameterBlock(pBlock);
+            }
+            else if (blockName == "")
+            {
+                // Default block
+                pNewDefaultBlock = ParameterBlockReflection::merge(*(pNewDefaultBlock ? pNewDefaultBlock : pNew->mpDefaultBlock), (*pBlock));
+                if (pNewDefaultBlock == nullptr) return nullptr;
+            }
+            else
+            {
+                // The block declaration must match
+                uint32_t index = pNew->getParameterBlockIndex(blockName);
+                ParameterBlockReflection::SharedConstPtr pMyBlock = pNew->getParameterBlock(index);
+                if (*pMyBlock != *pBlock)
+                {
+                    logError("Can't merge ProgramReflection objects. ParameterBlock mismatch. Something bad will probably happen");
+                    return nullptr;
+                }
+            }
+        }
+
+        if (pNewDefaultBlock)
+        {
+            pNewDefaultBlock->finalize();
+            pNew->mpDefaultBlock = pNewDefaultBlock;
+            pNew->updateDefaultBlockResourceBindings();
+        }
+
+        return pNew;
+    }
+
+    void ProgramReflection::updateDefaultBlockResourceBindings()
+    {
+        mResourceBindMap.clear();
+        if (mpDefaultBlock->isEmpty() == false)
+        {
+            // Initialize the map from the default-block resources to the global resources
+            for (const auto& res : mpDefaultBlock->getResourceVec())
+            {
+                const auto& loc = mpDefaultBlock->getResourceBinding(res.name);
+                ResourceBinding bind;
+                bind.regIndex = res.regIndex;
+                bind.regSpace = res.regSpace;
+                bind.type = getBindTypeFromSetType(res.setType);
+                mResourceBindMap[bind] = loc;
+            }
+        }
+    }
+
+    ProgramReflection::ProgramReflection(slang::ShaderReflection* pSlangReflector, ResourceScope scopeToReflect, std::string& log)
+    {
+        if (!pSlangReflector) return;
+
         ParameterBlockReflection::SharedPtr pDefaultBlock = ParameterBlockReflection::create("");
         for (uint32_t i = 0; i < pSlangReflector->getParameterCount(); i++)
         {
@@ -637,6 +747,10 @@ namespace Falcor
 
             // In GLSL, the varying (in/out) variables are reflected as globals. Ignore them, we will reflect them later
             if (pVar->getType()->unwrapArray()->asResourceType() == nullptr) continue;
+            auto varMod = pVar->getModifier();
+            
+            bool storeVar = is_set(varMod, ReflectionVar::Modifier::Shared) ? is_set(scopeToReflect, ResourceScope::Global) : is_set(scopeToReflect, ResourceScope::Local);
+            if (storeVar == false) continue;
 
             if (pSlangLayout->getType()->unwrapArray()->getKind() == TypeReflection::Kind::ParameterBlock)
             {
@@ -654,20 +768,7 @@ namespace Falcor
 
         pDefaultBlock->finalize();
         addParameterBlock(pDefaultBlock);
-
-        if (pDefaultBlock->isEmpty() == false)
-        {            
-            // Initialize the map from the default-block resources to the global resources
-            for (const auto& res : mpDefaultBlock->getResourceVec())
-            {
-                const auto& loc = mpDefaultBlock->getResourceBinding(res.name);
-                ResourceBinding bind;
-                bind.regIndex = res.regIndex;
-                bind.regSpace = res.regSpace;
-                bind.type = getBindTypeFromSetType(res.setType);
-                mResourceBindMap[bind] = loc;
-            }
-        }
+        updateDefaultBlockResourceBindings();
 
         // Reflect per-stage parameters
         SlangUInt entryPointCount = pSlangReflector->getEntryPointCount();
@@ -688,15 +789,11 @@ namespace Falcor
             break;
             case SLANG_STAGE_FRAGMENT:
                 reflectShaderIO(pEntryPoint, SLANG_PARAMETER_CATEGORY_FRAGMENT_OUTPUT, mPsOut);
+                mIsSampleFrequency = pEntryPoint->usesAnySampleRateInput();
                 break;
             case SLANG_STAGE_VERTEX:
                 reflectShaderIO(pEntryPoint, SLANG_PARAMETER_CATEGORY_VERTEX_INPUT, mVertAttr, &mVertAttrBySemantic);
                 break;
-#ifdef FALCOR_VK
-                mIsSampleFrequency = pEntryPoint->usesAnySampleRateInput();
-#else
-                mIsSampleFrequency = true; // #SLANG Slang reports false for DX shaders. There's an open issue, once it's fixed we should remove that
-#endif
             default:
                 break;
             }
@@ -726,15 +823,13 @@ namespace Falcor
         mNameToIndex[pVar->getName()] = mMembers.size() - 1;
     }
 
-    ReflectionVar::SharedPtr ReflectionVar::create(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace)
+    ReflectionVar::SharedPtr ReflectionVar::create(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace, Modifier modifier)
     {
-        return SharedPtr(new ReflectionVar(name, pType, offset, descOffset, regSpace));
+        return SharedPtr(new ReflectionVar(name, pType, offset, descOffset, regSpace, modifier));
     }
 
-    ReflectionVar::ReflectionVar(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace) : mName(name), mpType(pType), mOffset(offset), mRegSpace(regSpace), mDescOffset(descOffset)
-    {
-
-    }
+    ReflectionVar::ReflectionVar(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace, Modifier modifier) :
+        mName(name), mpType(pType), mOffset(offset), mRegSpace(regSpace), mDescOffset(descOffset), mModifier(modifier) {}
 
     ParameterBlockReflection::SharedPtr ParameterBlockReflection::create(const std::string& name)
     {
@@ -874,12 +969,18 @@ namespace Falcor
         const ReflectionResourceType* pResourceType = pVar->getType()->unwrapArray()->asResourceType();
         assert(pResourceType);
         uint32_t elementCount = max(1u, pVar->getType()->getTotalArraySize());
-        mResources.push_back(getResourceDesc(pVar, elementCount, pVar->getName()));
-        mpResourceVars->addMember(pVar);
 
-        // If this is a constant-buffer, it might contain resources. Extract them.
         const ReflectionType* pType = pResourceType->getStructType().get();
         const ReflectionStructType* pStruct = (pType != nullptr) ? pType->asStructType() : nullptr;
+
+        // pVar might be a CB for a ParameterBlock. If it's empty, don't add it
+        if(pStruct == nullptr || pStruct->getSize())
+        {
+            mResources.push_back(getResourceDesc(pVar, elementCount, pVar->getName()));
+            mpResourceVars->addMember(pVar);
+        }
+
+        // If this is a constant-buffer, it might contain resources. Extract them.
         if (pStruct)
         {
             for (const auto& pMember : *pStruct)
@@ -958,7 +1059,7 @@ namespace Falcor
             }
         }
 
-        mSetLayouts.resize(sets.size());
+        mSetLayouts = SetLayoutVec(sets.size());
         for (uint32_t s = 0; s < sets.size(); s++)
         {
             const auto& src = sets[s];
@@ -1117,6 +1218,13 @@ namespace Falcor
         return it->second;
     }
 
+    const ReflectionVar::SharedConstPtr& ReflectionStructType::getMember(const std::string& name) const
+    {
+        static ReflectionVar::SharedConstPtr pNull;
+        size_t index = getMemberIndex(name);
+        return (index == kInvalidOffset) ? pNull : getMember(index);
+    }
+
     const ReflectionResourceType* ReflectionType::asResourceType() const
     {
         return dynamic_cast<const ReflectionResourceType*>(this);
@@ -1203,7 +1311,7 @@ namespace Falcor
     }
 
     ReflectionArrayType::ReflectionArrayType(size_t offset, uint32_t arraySize, uint32_t arrayStride, const ReflectionType::SharedConstPtr& pType) :
-        ReflectionType(offset), mArraySize(arraySize), mArrayStride(arrayStride), mpType(pType) {}
+        ReflectionType(offset, ReflectionType::Type::Array), mArraySize(arraySize), mArrayStride(arrayStride), mpType(pType) {}
 
     ReflectionResourceType::SharedPtr ReflectionResourceType::create(Type type, Dimensions dims, StructuredType structuredType, ReturnType retType, ShaderAccess shaderAccess)
     {
@@ -1211,7 +1319,7 @@ namespace Falcor
     }
 
     ReflectionResourceType::ReflectionResourceType(Type type, Dimensions dims, StructuredType structuredType, ReturnType retType, ShaderAccess shaderAccess) :
-        ReflectionType(kInvalidOffset), mType(type), mStructuredType(structuredType), mReturnType(retType), mShaderAccess(shaderAccess), mDimensions(dims) {}
+        ReflectionType(kInvalidOffset, ReflectionType::Type::Resource), mType(type), mStructuredType(structuredType), mReturnType(retType), mShaderAccess(shaderAccess), mDimensions(dims) {}
 
     void ReflectionResourceType::setStructType(const ReflectionType::SharedConstPtr& pType)
     {
@@ -1225,7 +1333,7 @@ namespace Falcor
     }
 
     ReflectionBasicType::ReflectionBasicType(size_t offset, Type type, bool isRowMajor, size_t size) :
-        ReflectionType(offset), mType(type), mIsRowMajor(isRowMajor), mSize(size) {}
+        ReflectionType(offset, ReflectionType::Type::Basic), mType(type), mIsRowMajor(isRowMajor), mSize(size) {}
 
     ReflectionStructType::SharedPtr ReflectionStructType::create(size_t offset, size_t size, const std::string& name)
     {
@@ -1233,7 +1341,7 @@ namespace Falcor
     }
 
     ReflectionStructType::ReflectionStructType(size_t offset, size_t size, const std::string& name) :
-        ReflectionType(offset), mSize(size), mName(name) {}
+        ReflectionType(offset, ReflectionType::Type::Struct), mSize(size), mName(name) {}
 
     ParameterBlockReflection::BindLocation ParameterBlockReflection::getResourceBinding(const std::string& name) const
     {

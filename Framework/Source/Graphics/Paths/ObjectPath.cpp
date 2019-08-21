@@ -29,7 +29,6 @@
 #include "Framework.h"
 #include "ObjectPath.h"
 #include "MovableObject.h"
-#include "glm/common.hpp"
 #include <algorithm>
 
 namespace Falcor
@@ -228,6 +227,7 @@ namespace Falcor
         if(std::find(mpObjects.begin(), mpObjects.end(), pObject) == mpObjects.end())
         {
             mpObjects.push_back(pObject);
+            pObject->attachPath(this);
         }
     }
 
@@ -236,8 +236,18 @@ namespace Falcor
         auto it = std::find(mpObjects.begin(), mpObjects.end(), pObject);
         if(it != mpObjects.end())
         {
+            (*it)->attachPath(nullptr);
             mpObjects.erase(it);
         }
+    }
+
+    void ObjectPath::detachAllObjects()
+    {
+        for (auto& pObj : mpObjects)
+        {
+            pObj->attachPath(nullptr);
+        }
+        mpObjects.clear();
     }
 
     void ObjectPath::removeKeyFrame(uint32_t frameID)

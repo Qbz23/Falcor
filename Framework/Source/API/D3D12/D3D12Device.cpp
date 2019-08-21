@@ -65,9 +65,9 @@ namespace Falcor
             switch (minorVersion)
             {
             case 0:
-                return D3D_FEATURE_LEVEL_11_1;
-            case 1:
                 return D3D_FEATURE_LEVEL_11_0;
+            case 1:
+                return D3D_FEATURE_LEVEL_11_1;
             }
         }
         else if (majorVersion == 10)
@@ -124,11 +124,40 @@ namespace Falcor
         return pSwapChain3;
     }
 
-    ID3D12DevicePtr createDevice(IDXGIFactory4* pFactory, D3D_FEATURE_LEVEL featureLevel, Device::Desc::CreateDeviceFunc createFunc, bool& rgb32FSupported)
+    DeviceHandle createDevice(IDXGIFactory4* pFactory, D3D_FEATURE_LEVEL requestedFeatureLevel, const std::vector<UUID>& experimentalFeatures)
     {
+        // Feature levels to try creating devices. Listed in descending order so the highest supported level is used.
+        const static D3D_FEATURE_LEVEL kFeatureLevels[] =
+        {
+            D3D_FEATURE_LEVEL_12_1,
+            D3D_FEATURE_LEVEL_12_0,
+            D3D_FEATURE_LEVEL_11_1,
+            D3D_FEATURE_LEVEL_11_0,
+            D3D_FEATURE_LEVEL_10_1,
+            D3D_FEATURE_LEVEL_10_0,
+            D3D_FEATURE_LEVEL_9_3,
+            D3D_FEATURE_LEVEL_9_2,
+            D3D_FEATURE_LEVEL_9_1
+        };
+
         // Find the HW adapter
         IDXGIAdapter1Ptr pAdapter;
-        ID3D12DevicePtr pDevice;
+        DeviceHandle pDevice;
+        D3D_FEATURE_LEVEL deviceFeatureLevel;
+
+        auto createMaxFeatureLevel = [&](const D3D_FEATURE_LEVEL* pFeatureLevels, uint32_t featureLevelCount) -> bool
+        {
+            for (uint32_t i = 0; i < featureLevelCount; i++)
+            {
+                if (SUCCEEDED(D3D12CreateDevice(pAdapter, pFeatureLevels[i], IID_PPV_ARGS(&pDevice))))
+                {
+                    deviceFeatureLevel = pFeatureLevels[i];
+                    return true;
+                }
+            }
+
+            return false;
+        };
 
         for (uint32_t i = 0; DXGI_ERROR_NOT_FOUND != pFactory->EnumAdapters1(i, &pAdapter); i++)
         {
@@ -136,26 +165,50 @@ namespace Falcor
             pAdapter->GetDesc1(&desc);
 
             // Skip SW adapters
-            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            {
-                continue;
-            }
+            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
 
-            // Try and create a D3D12 device
-            if (createFunc)
+            if (requestedFeatureLevel == 0) createMaxFeatureLevel(kFeatureLevels, arraysize(kFeatureLevels));
+            else createMaxFeatureLevel(&requestedFeatureLevel, 1);
+
+            if (pDevice != nullptr)
             {
-                pDevice = createFunc(pAdapter, featureLevel);
-                if (pDevice) return pDevice;
-            }
-            else if (D3D12CreateDevice(pAdapter, featureLevel, IID_PPV_ARGS(&pDevice)) == S_OK)
-            {
-				rgb32FSupported = (desc.VendorId != 0x1002); // The AMD cards I tried can't handle 96-bits textures correctly
+                logInfo("Successfully created device with feature level: " + to_string(deviceFeatureLevel));
                 return pDevice;
             }
         }
 
         logErrorAndExit("Could not find a GPU that supports D3D12 device");
         return nullptr;
+    }
+
+    Device::SupportedFeatures getSupportedFeatures(DeviceHandle pDevice)
+    {
+        Device::SupportedFeatures supported = Device::SupportedFeatures::None;
+
+        D3D12_FEATURE_DATA_D3D12_OPTIONS2 features2;
+        HRESULT hr = pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &features2, sizeof(D3D12_FEATURE_DATA_D3D12_OPTIONS2));
+        if (FAILED(hr) || features2.ProgrammableSamplePositionsTier == D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_NOT_SUPPORTED)
+        {
+            logInfo("Programmable sample positions is not supported on this device.");
+        }
+        else
+        {
+            if (features2.ProgrammableSamplePositionsTier == D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_1) supported |= Device::SupportedFeatures::ProgrammableSamplePositionsPartialOnly;
+            else if (features2.ProgrammableSamplePositionsTier == D3D12_PROGRAMMABLE_SAMPLE_POSITIONS_TIER_2) supported |= Device::SupportedFeatures::ProgrammableSamplePositionsFull;
+        }
+
+        D3D12_FEATURE_DATA_D3D12_OPTIONS5 features5;
+        hr = pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &features5, sizeof(D3D12_FEATURE_DATA_D3D12_OPTIONS5));
+        if (FAILED(hr) || features5.RaytracingTier == D3D12_RAYTRACING_TIER_NOT_SUPPORTED)
+        {
+            logInfo("Raytracing is not supported on this device.");
+        }
+        else
+        {
+            supported |= Device::SupportedFeatures::Raytracing;
+        }
+
+        return supported;
     }
 
     CommandQueueHandle Device::getCommandQueueHandle(LowLevelContextData::CommandQueueType type, uint32_t index) const
@@ -194,6 +247,11 @@ namespace Falcor
         return true;
     }
 
+    void Device::toggleFullScreen(bool fullscreen)
+    {
+        mpApiData->pSwapChain->SetFullscreenState(fullscreen, nullptr);
+    }
+
     void Device::destroyApiObjects()
     {
         safe_delete(mpApiData);
@@ -224,10 +282,28 @@ namespace Falcor
         // Create the DXGI factory
         d3d_call(CreateDXGIFactory2(dxgiFlags, IID_PPV_ARGS(&mpApiData->pDxgiFactory)));
 
-        mApiHandle = createDevice(mpApiData->pDxgiFactory, getD3DFeatureLevel(desc.apiMajorVersion, desc.apiMinorVersion), desc.createDeviceFunc, mRgb32FloatSupported);
+        mApiHandle = createDevice(mpApiData->pDxgiFactory, getD3DFeatureLevel(desc.apiMajorVersion, desc.apiMinorVersion), desc.experimentalFeatures);
         if (mApiHandle == nullptr)
         {
             return false;
+        }
+
+        mSupportedFeatures = getSupportedFeatures(mApiHandle);
+
+        if (desc.enableDebugLayer)
+        {
+            MAKE_SMART_COM_PTR(ID3D12InfoQueue);
+            ID3D12InfoQueuePtr pInfoQueue;
+            mApiHandle->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+            D3D12_MESSAGE_ID hideMessages[] =
+            {
+                D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+                D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+            };
+            D3D12_INFO_QUEUE_FILTER f = {};
+            f.DenyList.NumIDs = arraysize(hideMessages);
+            f.DenyList.pIDList = hideMessages;
+            pInfoQueue->AddStorageFilterEntries(&f);
         }
 
         for (uint32_t i = 0; i < kQueueTypeCount; i++)

@@ -43,17 +43,18 @@ namespace Falcor
             logError("Failed to initialize NvApi", true);
         }
 
-        auto uav = desc.getProgramVersion()->getReflector()->getBufferBinding("g_NvidiaExt");
-        if (uav.baseRegIndex != ProgramReflection::kInvalidLocation)
+        ReflectionVar::SharedConstPtr pUav = desc.getProgramVersion()->getReflector()->getDefaultParameterBlock()->getResource("g_NvidiaExt");
+        if ((pUav != nullptr) && (pUav->getRegisterIndex() != ProgramReflection::kInvalidLocation))
         {
             nvApiPsoExDescs.push_back(NvApiPsoExDesc());
-            createNvApiUavSlotExDesc(nvApiPsoExDescs.back(), uav.baseRegIndex);
+            createNvApiUavSlotExDesc(nvApiPsoExDescs.back(), pUav->getRegisterIndex());
         }
     }
 
     ComputeStateObject::ApiHandle getNvApiComputePsoHandle(const std::vector<NvApiPsoExDesc>& nvDescVec, const D3D12_COMPUTE_PIPELINE_STATE_DESC& desc)
     {
-        const NVAPI_D3D12_PSO_EXTENSION_DESC* ppPSOExtensionsDesc[1];
+        assert(nvDescVec.size() <= 1);
+        const NVAPI_D3D12_PSO_EXTENSION_DESC* ppPSOExtensionsDesc[1] = {};
 
         for (uint32_t ex = 0; ex < nvDescVec.size(); ex++)
         {
@@ -77,8 +78,8 @@ namespace Falcor
 
     bool getIsNvApiComputePsoRequired(const ComputeStateObject::Desc& desc)
     {
-        auto uav = desc.getProgramVersion()->getReflector()->getBufferBinding("g_NvidiaExt");
-        return uav.baseRegIndex != ProgramReflection::kInvalidLocation;
+        ReflectionVar::SharedConstPtr pUav = desc.getProgramVersion()->getReflector()->getDefaultParameterBlock()->getResource("g_NvidiaExt");
+        return (pUav != nullptr) && (pUav->getRegisterIndex() != ProgramReflection::kInvalidLocation);
     }
 
 #else

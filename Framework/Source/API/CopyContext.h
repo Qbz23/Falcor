@@ -27,32 +27,41 @@
 ***************************************************************************/
 #pragma once
 #include "API/Resource.h"
-#ifdef FALCOR_LOW_LEVEL_API
 #include "API/LowLevel/LowLevelContextData.h"
-#endif
 
 namespace Falcor
 {
     class Texture;
     class Buffer;
 
-    class CopyContext : public std::enable_shared_from_this<CopyContext>
+    class CopyContext
     {
     public:
         using SharedPtr = std::shared_ptr<CopyContext>;
         using SharedConstPtr = std::shared_ptr<const CopyContext>;
         virtual ~CopyContext();
 
-        static SharedPtr create(CommandQueueHandle queue);
-        void updateBuffer(const Buffer* pBuffer, const void* pData, size_t offset = 0, size_t numBytes = 0);
-        void updateTexture(const Texture* pTexture, const void* pData);
-        void updateTextureSubresource(const Texture* pTexture, uint32_t subresourceIndex, const void* pData);
-        void updateTextureSubresources(const Texture* pTexture, uint32_t firstSubresource, uint32_t subresourceCount, const void* pData);
-        std::vector<uint8> readTextureSubresource(const Texture* pTexture, uint32_t subresourceIndex);
+        class ReadTextureTask
+        {
+        public:
+            using SharedPtr = std::shared_ptr<ReadTextureTask>;
+            static SharedPtr create(CopyContext* pCtx, const Texture* pTexture, uint32_t subresourceIndex);
+            std::vector<uint8> getData();
+        private:
+            ReadTextureTask() = default;
+            GpuFence::SharedPtr mpFence;
+            Buffer::SharedPtr mpBuffer;
+            CopyContext* mpContext;
+#ifdef FALCOR_D3D12
+            uint32_t mRowCount;
+            ResourceFormat mTextureFormat;
+            D3D12_PLACED_SUBRESOURCE_FOOTPRINT mFootprint;
+#elif defined(FALCOR_VK)
+            size_t mDataSize;
+#endif
+        };
 
-        /** Reset
-        */
-        virtual void reset();
+        static SharedPtr create(CommandQueueHandle queue);
 
         /** Flush the command list. This doesn't reset the command allocator, just submits the commands
             \param[in] wait If true, will block execution until the GPU finished processing the commands
@@ -68,8 +77,13 @@ namespace Falcor
         void setPendingCommands(bool commandsPending) { mCommandsPending = commandsPending; }
 
         /** Insert a resource barrier
+            if pViewInfo is nullptr, will transition the entire resource. Otherwise, it will only transition the subresource in the view
         */
-        virtual void resourceBarrier(const Resource* pResource, Resource::State newState);
+        virtual void resourceBarrier(const Resource* pResource, Resource::State newState, const ResourceViewInfo* pViewInfo = nullptr);
+
+        /** Insert a UAV barrier
+        */
+        virtual void uavBarrier(const Resource* pResource);
 
         /** Copy an entire resource
         */
@@ -83,21 +97,54 @@ namespace Falcor
         */
         void copyBufferRegion(const Buffer* pDst, uint64_t dstOffset, const Buffer* pSrc, uint64_t srcOffset, uint64_t numBytes);
 
-#ifdef FALCOR_LOW_LEVEL_API
+        /** Copy a region of a subresource from one texture to another
+            `srcOffset`, `dstOffset` and `size` describe the source and destination regions. For any channel of `extent` that is -1, the source texture dimension will be used
+        */
+        void copySubresourceRegion(const Texture* pDst, uint32_t dstSubresource, const Texture* pSrc, uint32_t srcSubresource, const uvec3& dstOffset = uvec3(0), const uvec3& srcOffset = uvec3(0), const uvec3& size = uvec3(-1));
+
+        /** Update a texture's subresource data
+            `offset` and `size` describe a region to update. For any channel of `extent` that is -1, the texture dimension will be used.
+            pData can't be null. The size of the pointed buffer must be equal to a single texel size times the size of the region we are updating
+        */
+        void updateSubresourceData(const Texture* pDst, uint32_t subresource, const void* pData, const uvec3& offset = uvec3(0), const uvec3& size = uvec3(-1));
+
+        /** Update an entire texture
+        */
+        void updateTextureData(const Texture* pTexture, const void* pData);
+
+        /** Update a buffer
+        */
+        void updateBuffer(const Buffer* pBuffer, const void* pData, size_t offset = 0, size_t numBytes = 0);
+
+        /** Read texture data synchronously. Calling this command will flush the pipeline and wait for the GPU to finish execution
+        */
+        std::vector<uint8> readTextureSubresource(const Texture* pTexture, uint32_t subresourceIndex);
+
+        /** Read texture data Asynchronously
+        */
+        ReadTextureTask::SharedPtr asyncReadTextureSubresource(const Texture* pTexture, uint32_t subresourceIndex);
+        
         /** Get the low-level context data
         */
-        virtual LowLevelContextData::SharedPtr getLowLevelData() const { return mpLowLevelData; }
+        virtual const LowLevelContextData::SharedPtr& getLowLevelData() const { return mpLowLevelData; }
 
         /** Override the low-level context data with a user provided object
         */
         void setLowLevelContextData(LowLevelContextData::SharedPtr pLowLevelData) { mpLowLevelData = pLowLevelData; }
-#endif
-    protected:
+
+        /** Bind the descriptor heaps from the device into the command-list
+        */
         void bindDescriptorHeaps();
+
+    protected:
+        void textureBarrier(const Texture* pTexture, Resource::State newState);
+        void bufferBarrier(const Buffer* pBuffer, Resource::State newState);
+        void subresourceBarriers(const Texture* pTexture, Resource::State newState, const ResourceViewInfo* pViewInfo);
+        void apiSubresourceBarrier(const Texture* pTexture, Resource::State newState, Resource::State oldState, uint32_t arraySlice, uint32_t mipLevel);
+        void updateTextureSubresources(const Texture* pTexture, uint32_t firstSubresource, uint32_t subresourceCount, const void* pData, const uvec3& offset = uvec3(0), const uvec3& size = uvec3(-1));
+
         CopyContext() = default;
         bool mCommandsPending = false;
-#ifdef FALCOR_LOW_LEVEL_API
         LowLevelContextData::SharedPtr mpLowLevelData;
-#endif
     };
 }

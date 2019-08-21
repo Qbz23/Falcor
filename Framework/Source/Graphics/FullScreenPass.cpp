@@ -28,7 +28,6 @@
 #include "Framework.h"
 #include "FullScreenPass.h"
 #include "API/VAO.h"
-#include "glm/vec2.hpp"
 #include "API/Buffer.h"
 #include "API/DepthStencilState.h"
 #include "API/RenderContext.h"
@@ -39,7 +38,7 @@ namespace Falcor
 {
     bool checkForViewportArray2Support()
     {
-#ifdef FALCOR_D3D
+#ifdef FALCOR_D3D12
         return false;
 #elif defined FALCOR_VK
         return false;
@@ -52,10 +51,6 @@ namespace Falcor
         glm::vec2 screenPos;
         glm::vec2 texCoord;
     };
-
-    Buffer::SharedPtr FullScreenPass::spVertexBuffer;
-    Vao::SharedPtr FullScreenPass::spVao;
-    uint64_t FullScreenPass::sObjectCount = 0;
 
 #ifdef FALCOR_VK
 #define ADJUST_Y(a) (-(a))
@@ -89,32 +84,19 @@ namespace Falcor
         pVao = Vao::create(Vao::Topology::TriangleStrip, pLayout, buffers);
     }
 
-    FullScreenPass::~FullScreenPass() 
+    FullScreenPass::UniquePtr FullScreenPass::create(const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS, Shader::CompilerFlags compilerFlags, const std::string& shaderModel)
     {
-#ifndef _AUTOTESTING
-        assert(sObjectCount > 0);
-#endif
-        sObjectCount--;
-        if (sObjectCount == 0)
-        {
-            spVao = nullptr;
-            spVertexBuffer = nullptr;
-        }
+        return create("", psFile, programDefines, disableDepth, disableStencil, viewportMask, enableSPS, compilerFlags, shaderModel);
     }
 
-    FullScreenPass::UniquePtr FullScreenPass::create(const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS)
-    {
-        return create("", psFile, programDefines, disableDepth, disableStencil, viewportMask, enableSPS);
-    }
-
-    FullScreenPass::UniquePtr FullScreenPass::create(const std::string& vsFile, const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS)
+    FullScreenPass::UniquePtr FullScreenPass::create(const std::string& vsFile, const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS, Shader::CompilerFlags compilerFlags, const std::string& shaderModel)
     {
         UniquePtr pPass = UniquePtr(new FullScreenPass());
-        pPass->init(vsFile, psFile, programDefines, disableDepth, disableStencil, viewportMask, enableSPS);
+        pPass->init(vsFile, psFile, programDefines, disableDepth, disableStencil, viewportMask, enableSPS, compilerFlags, shaderModel);
         return pPass;
     }
 
-    void FullScreenPass::init(const std::string& vsFile, const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS)
+    void FullScreenPass::init(const std::string& vsFile, const std::string& psFile, const Program::DefineList& programDefines, bool disableDepth, bool disableStencil, uint32_t viewportMask, bool enableSPS, Shader::CompilerFlags compilerFlags, const std::string& shaderModel)
     {
         mpPipelineState = GraphicsState::create();
         mpPipelineState->toggleSinglePassStereo(enableSPS);
@@ -141,33 +123,34 @@ namespace Falcor
             else
             {
                 defs.add("_OUTPUT_VERTEX_COUNT", std::to_string(3 * popcount(viewportMask)));
-#ifdef FALCOR_VK
-                gs = "Framework/Shaders/FullScreenPass.gs.glsl";
-#else
                 gs = "Framework/Shaders/FullScreenPass.gs.slang";
-#endif
             }
         }
 
-        const std::string vs(vsFile.empty() ? "Framework/Shaders/FullScreenPass.vs.slang" : vsFile);
-        mpProgram = GraphicsProgram::createFromFile(vs, psFile, gs, "", "", defs);
+        GraphicsProgram::Desc d;
+        d.setCompilerFlags(compilerFlags);
+        d.addShaderLibrary(vsFile.empty() ? "Framework/Shaders/FullScreenPass.vs.slang" : vsFile).vsEntry("main").addShaderLibrary(psFile).psEntry("main");
+        if (gs.size()) d.addShaderLibrary(gs).gsEntry("main");
+        if (!shaderModel.empty()) d.setShaderModel(shaderModel);
+        mpProgram = GraphicsProgram::create(d, defs);
         mpPipelineState->setProgram(mpProgram);
 
-        if (FullScreenPass::spVertexBuffer == nullptr)
+        if (gFullScreenData.pVertexBuffer == nullptr)
         {
-            initStaticObjects(spVertexBuffer, spVao);
+            initStaticObjects(gFullScreenData.pVertexBuffer, gFullScreenData.pVao);
         }
-        mpPipelineState->setVao(FullScreenPass::spVao);
+        mpPipelineState->setVao(gFullScreenData.pVao);
     }
 
-    void FullScreenPass::execute(RenderContext* pRenderContext, DepthStencilState::SharedPtr pDsState) const
+    void FullScreenPass::execute(RenderContext* pRenderContext, DepthStencilState::SharedPtr pDsState, BlendState::SharedPtr pBlendState) const
     {
         mpPipelineState->pushFbo(pRenderContext->getGraphicsState()->getFbo(), false);
         mpPipelineState->setViewport(0, pRenderContext->getGraphicsState()->getViewport(0), false);
         mpPipelineState->setScissors(0, pRenderContext->getGraphicsState()->getScissors(0));
 
-        mpPipelineState->setVao(spVao);
+        mpPipelineState->setVao(gFullScreenData.pVao);
         mpPipelineState->setDepthStencilState(pDsState ? pDsState : mpDepthStencilState);
+        mpPipelineState->setBlendState(pBlendState);
         pRenderContext->pushGraphicsState(mpPipelineState);
         pRenderContext->draw(arraysize(kVertices), 0);
         pRenderContext->popGraphicsState();

@@ -1,4 +1,4 @@
-Falcor 2.0
+Falcor 3.2
 =================
 
 Falcor is a real-time rendering framework supporting DirectX 12 and Vulkan. It aims to improve productivity of research and prototype projects.
@@ -6,26 +6,30 @@ Its features include:
 * Abstracting many common graphics operations, such as shader compilation, model loading and scene rendering
 * VR support using OpenVR
 * Common rendering effects such as shadows and post-processing effects
-
-This is a beta version. The interfaces are not final yet and there might be some performance/stability issues.
+* DirectX Raytracing abstraction 
 
 Prerequisites
 ------------------------
 - GPU that supports DirectX 12 or Vulkan
-- Windows 10 RS1 (1607 Anniversary Update) or newer, or Ubuntu 17.10
+- Windows 10 RS2 (version 1703) or newer, or Ubuntu 17.10
 
 On Windows:
-- Visual Studio 2015
-- [Microsoft Windows SDK ver 10.0.14393.795](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive)
+- Visual Studio 2017
+- [Microsoft Windows SDK version 1809 (10.0.17763.0)](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive)
+- To run DirectX 12 applications with the debug layer enabled, you need to install the Graphics Tools optional feature. The tools version must match the OS version you are using (not to be confused with the SDK version used for building Falcor). There are 2 ways to install it:
+    - Click the Windows button and type `Optional Features`, in the window that opens click `Add a feature` and select `Graphics Tools`.
+    - Download an offline pacakge from [here](https://docs.microsoft.com/en-us/windows-hardware/test/hlk/windows-hardware-lab-kit#supplemental-content-for-graphics-media-and-mean-time-between-failures-mtbf-tests). Choose a ZIP file that matches the OS version you are using. The ZIP includes a document which explains how to install the graphics tools.
 
-NVAPI Support
---------------
-NVIDIA's NVAPI SDK exposes a set of GPU features that are not part of the DirectX spec.
-Using it with Falcor is not mandatory. However, Falcor does abstract some of those features. For example, the SceneRenderer VR mode relies on Single Pass Stereo support.
-If you want to use it:
-- Please download the [NVAPI SDK](https://developer.nvidia.com/nvapi)
-- Unzip the content of the package to Framework\Externals
-- Rename the folder to 'NVAPI'
+DirectX Raytracing 
+-------------------------
+Falcor 3.0 added support for DirectX Raytracing. As of Falcor 3.1, special build configs are no longer required to enable these features. Simply use the `DebugD3D12` or `ReleaseD3D12` configs as you would for any other DirectX project.
+The HelloDXR sample demonstrates how to use Falcor’s DXR abstraction layer.
+
+- Requirements:
+    - Windows 10 RS5 (version 1809)
+    - A GPU which supports DirectX Raytracing, such as the NVIDIA Titan V or GeForce RTX (make sure you have the latest driver)
+
+Falcor doesn’t support the DXR fallback layer.
 
 TensorFlow Support
 --------------
@@ -38,7 +42,7 @@ Falcor is tested on Ubuntu 17.10, but may also work with other versions and dist
 To build and run Falcor on Linux:
 - Install the Vulkan SDK following the instructions [HERE](https://vulkan.lunarg.com/doc/view/latest/linux/getting_started.html)
 - Install additional dependencies:
-    - `sudo apt-get install python libassimp-dev libglfw3-dev libgtk-3-dev libfreeimage-dev libavcodec-dev libavdevice-dev libavformat-dev libswscale-dev libavutil-dev`
+    - `sudo apt-get install python python3-dev libassimp-dev libglfw3-dev libgtk-3-dev libfreeimage-dev libavcodec-dev libavdevice-dev libavformat-dev libswscale-dev libavutil-dev`
 - Run the `Makefile`
     - To only build the library, run `make Debug` or `make Release` depending on the desired configuration
     - To build samples, run `make` using the target for the sample(s) you want to build. Config can be changed by setting `SAMPLE_CONFIG` to `Debug` or `Release`
@@ -51,9 +55,10 @@ follow the instructions below.
 Creating a New Project
 ------------------------
 - If you haven't done so already, create a Visual Studio solution and project for your code. Falcor only supports 64-bit builds, so make sure you have a 64-bit build configuration
-- Add Falcor.props to your project (Property Manager -> Right click your project -> Add existing property sheet)
-- Add Falcor.vcxproj to your solution
-- Add a reference to Falcor in your project (Solution Explorer -> Your Project -> Right Click `References` -> Click `Add Reference...` -> Choose Falcor)
+- Add `Framework\Source\Falcor.props` to your project (View -> Other Windows ->Property Manager -> Right click your project -> Add existing property sheet)
+- Add `FalcorSharedObjects.vcxproj` to your solution (Located at `Framework/FalcorSharedObjects/FalcorSharedObjects.vcxproj`)
+- Add `Falcor.vcxproj` to your solution (Located at `Framework/Source/Falcor.vcxproj`)
+- Add a reference to Falcor in your project (Solution Explorer -> Right click your Project -> `Add` -> `Reference` -> Choose Falcor)
 
 *Sample* Class
 -------------------
@@ -62,7 +67,7 @@ A good place to start looking for examples would be the ModelViewer sample.
 
 Build Configurations
 --------------------
-Falcor has the following build configurations for DirectX 12 and Vulkan, respectively:
+Falcor has the following build configurations for DirectX 12, Vulkan and DXR, respectively:
 - `DebugD3D12`
 - `ReleaseD3D12`
 - `DebugVK`
@@ -101,6 +106,13 @@ By default, Falcor looks for data files in the following locations:
 
 To search for a data file, call `findFileInDataDirectories()`.
 
+Shaders
+-------
+
+Falcor uses the [Slang](https://github.com/shader-slang/slang) shading language and compiler.
+Users can write HLSL/Slang shader code in `.hlsl` or `.slang` files.
+The framework handles cross-compilation to SPIR-V for you when targetting Vulkan; GLSL shaders are not supported.
+
 Deployment
 ----------
 The best practice is to create a directory called "Data/" next to your **project** file and place all your data files there (shaders/models).  If that directory exists, Falcor will copy it to the output directory, making the output directory self-contained (you can zip only the output directory and it should work).  If not, you will have to copy the data files yourself.
@@ -110,11 +122,14 @@ Citation
 If you use Falcor in a research project leading to a publication, please cite the project.
 The BibTex entry is
 
-@Misc{Benty17,  
-   author =      {Nir Benty and Kai-Hwa Yao and Tim Foley and Anton S. Kaplanyan and Conor Lavelle and Chris Wyman and Ashwin Vijay},  
+```bibtex
+@Misc{Benty18,  
+   author =      {Nir Benty and Kai-Hwa Yao and Tim Foley and Matthew Oakes and Conor Lavelle and Chris Wyman},  
    title =       {The {Falcor} Rendering Framework},  
-   year =        {2017},  
-   month =       {07},  
+   year =        {2018},  
+   month =       {05},  
    url =         {https://github.com/NVIDIAGameWorks/Falcor},  
    note=         {\url{https://github.com/NVIDIAGameWorks/Falcor}}  
 }
+```
+

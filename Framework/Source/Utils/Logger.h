@@ -45,13 +45,14 @@ namespace Falcor
             Info = 0,       ///< Informative messages
             Warning = 1,    ///< Warning messages
             Error = 2,      ///< Error messages. Application might be able to continue running, but incorrectly.
-
+            Fatal = 3,      ///< Unrecoverable error. Will assert in debug builds
             Disabled = -1
         };
 
-        /** Initialize the logger. Has to be called once before logging is possible. This function will create the log file.
+        /** Initialize logger and open log file.
+            \return Whether initialization was successful
         */
-        static void init();
+        static bool initialize();
 
         /** Shutdown the logger and close the log file.
         */
@@ -60,12 +61,12 @@ namespace Falcor
         /** Controls weather or not to show message box on log messages.
             \param[in] showBox true to show a message box, false to disable it.
         */
-        static void showBoxOnError(bool showBox) { sShowErrorBox = showBox; }
+        static void showBoxOnError(bool showBox);
 
         /** Returns weather or not the message box is shown on log messages.
             returns true if a message box is shown, false otherwise.
         */
-        static bool isBoxShownOnError() { return sShowErrorBox; }
+        static bool isBoxShownOnError();
 
         /** Check if the logger is enabled
         */
@@ -73,7 +74,19 @@ namespace Falcor
 
         /** Set the logger verbosity
         */
-        static void setVerbosity(Level level) { sVerbosity = level; }
+        static void setVerbosity(Level level);
+
+        struct Data
+        {
+#ifdef _DEBUG
+            bool showErrorBox = true;
+#else
+            bool showErrorBox = false;
+#endif
+            FILE* pLogFile = nullptr;
+            bool initialized = false;
+            Level verbosity = Level::Warning;
+        };
 
     private:
         friend void logInfo(const std::string& msg, bool forceMsgBox);
@@ -84,10 +97,6 @@ namespace Falcor
         static void log(Level L, const std::string& msg, bool forceMsgBox = false);
 
         Logger() = delete;
-        static bool sShowErrorBox;
-        static FILE* sLogFile;
-        static bool sInit;
-        static Level sVerbosity;
     };
 
     inline void logInfo(const std::string& msg, bool forceMsgBox = false) { Logger::log(Logger::Level::Info, msg, forceMsgBox); }

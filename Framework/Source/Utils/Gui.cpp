@@ -39,8 +39,10 @@
 #pragma warning (disable : 4756) // overflow in constant arithmetic caused by calculating the setFloat*() functions (when calculating the step and min/max are +/- INF)
 namespace Falcor
 {
-    void Gui::init()
+    void Gui::init(float scaleFactor)
     {
+        mScaleFactor = scaleFactor;
+        ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
         io.KeyMap[ImGuiKey_Tab] = (uint32_t)KeyboardEvent::Key::Tab;
         io.KeyMap[ImGuiKey_LeftArrow] = (uint32_t)KeyboardEvent::Key::Left;
@@ -64,31 +66,26 @@ namespace Falcor
         io.IniFilename = nullptr;
 
         ImGuiStyle& style = ImGui::GetStyle();
-        style.Colors[ImGuiCol_WindowBg].w = 0.85f;
-        style.Colors[ImGuiCol_FrameBg].x *= 0.5f;
-        style.Colors[ImGuiCol_FrameBg].y *= 0.5f;
-        style.Colors[ImGuiCol_FrameBg].z *= 0.5f;
+        style.Colors[ImGuiCol_WindowBg].w = 0.9f;
+        style.Colors[ImGuiCol_FrameBg].x *= 0.1f;
+        style.Colors[ImGuiCol_FrameBg].y *= 0.1f;
+        style.Colors[ImGuiCol_FrameBg].z *= 0.1f;
         style.ScrollbarSize *= 0.7f;
+
+        style.Colors[ImGuiCol_MenuBarBg] = style.Colors[ImGuiCol_WindowBg];
+        style.ScaleAllSizes(scaleFactor);
 
         // Create the pipeline state cache
         mpPipelineState = GraphicsState::create();
 
         // Create the program
-        mpProgram = GraphicsProgram::createFromFile("Framework/Shaders/Gui.vs.slang", "Framework/Shaders/Gui.ps.slang");
-        mpProgramVars = GraphicsVars::create(mpProgram->getActiveVersion()->getReflector());
+        mpProgram = GraphicsProgram::createFromFile("Framework/Shaders/Gui.slang", "vs", "ps");
+        mpProgramVars = GraphicsVars::create(mpProgram->getReflector());
         mpPipelineState->setProgram(mpProgram);
 
-        // Create and set the texture
-        uint8_t* pFontData;
-        int32_t width, height;
-        std::string fontFile;
-        if(findFileInDataDirectories("Framework/Fonts/trebucbd.ttf", fontFile))
-        {
-            io.Fonts->AddFontFromFileTTF(fontFile.c_str(), 14);
-        }
-        io.Fonts->GetTexDataAsAlpha8(&pFontData, &width, &height);
-        Texture::SharedPtr pTexture = Texture::create2D(width, height, ResourceFormat::R8Unorm, 1, 1, pFontData);
-        mpProgramVars->setTexture("gFont", pTexture);
+        // Add the default font
+        addFont("", "Framework/Fonts/trebucbd.ttf");
+        setActiveFont("");
 
         // Create the blend state
         BlendState::Desc blendDesc;
@@ -112,12 +109,19 @@ namespace Falcor
         pBufLayout->addElement("COLOR", offsetof(ImDrawVert, col), ResourceFormat::RGBA8Unorm, 1, 2);
         mpLayout = VertexLayout::create();
         mpLayout->addBufferLayout(0, pBufLayout);
+
+        mGuiImageLoc = mpProgram->getReflector()->getDefaultParameterBlock()->getResourceBinding("guiImage");
     }
 
-    Gui::UniquePtr Gui::create(uint32_t width, uint32_t height)
+    Gui::~Gui()
+    {
+        ImGui::DestroyContext();
+    }
+
+    Gui::UniquePtr Gui::create(uint32_t width, uint32_t height, float scaleFactor)
     {
         UniquePtr pGui = UniquePtr(new Gui);
-        pGui->init();
+        pGui->init(scaleFactor);
         pGui->onWindowResize(width, height);
         return pGui;
     }
@@ -242,6 +246,15 @@ namespace Falcor
             {
                 const ImDrawCmd* pCmd = &pCmdList->CmdBuffer[cmd];
                 GraphicsState::Scissor scissor((int32_t)pCmd->ClipRect.x, (int32_t)pCmd->ClipRect.y, (int32_t)pCmd->ClipRect.z, (int32_t)pCmd->ClipRect.w);
+                if (pCmd->TextureId) 
+                {
+                    mpProgramVars->getDefaultBlock()->setSrv(mGuiImageLoc, 0, (mpImages[reinterpret_cast<size_t>(pCmd->TextureId) - 1])->getSRV());
+                    mpProgramVars["PerFrameCB"]["useGuiImage"] = true;
+                }
+                else
+                {
+                    mpProgramVars["PerFrameCB"]["useGuiImage"] = false;
+                }
                 mpPipelineState->setScissors(0, scissor);
                 pContext->drawIndexed(pCmd->ElemCount, idxOffset, vtxOffset);
                 idxOffset += pCmd->ElemCount;
@@ -254,12 +267,102 @@ namespace Falcor
         io.DeltaTime = elapsedTime;
         mGroupStackSize = 0;
         pContext->popGraphicsState();
+
+        mpImages.clear();
+    }
+
+    glm::vec4 Gui::pickUniqueColor(const std::string& key)
+    {
+        union hashedValue
+        {
+            size_t st;
+            int32_t i32[2];
+        };
+        hashedValue color;
+        color.st = std::hash<std::string>()(key);
+
+        return glm::vec4(color.i32[0] % 1000 / 2000.0f, color.i32[1] % 1000 / 2000.0f, (color.i32[0] * color.i32[1]) % 1000 / 2000.0f, 1.0f);
+    }
+
+    void Gui::addDummyItem(const char label[], const glm::vec2& size, bool sameLine)
+    {
+        if (sameLine) ImGui::SameLine();
+        ImGui::PushID(label);
+        ImGui::Dummy({ size.x, size.y });
+        ImGui::PopID();
+    }
+
+    void Gui::addRect(const glm::vec2& size, const glm::vec4& color, bool filled, bool sameLine)
+    {
+        if (sameLine) ImGui::SameLine();
+        
+        const ImVec2& cursorPos = ImGui::GetCursorScreenPos();
+        ImVec2 bottomLeft{ cursorPos.x + size.x, cursorPos.y + size.y };
+        ImVec4 rectColor{color.x, color.y, color.z, color.w};
+        
+        if (filled)
+        {
+            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetCursorScreenPos(), bottomLeft, ImGui::ColorConvertFloat4ToU32(rectColor));
+        }
+        else
+        {
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetCursorScreenPos(), bottomLeft, ImGui::ColorConvertFloat4ToU32(rectColor));
+        }
+    }
+
+    void Gui::beginColumns(uint32_t numColumns)
+    {
+        ImGui::Columns(numColumns);
+    }
+
+    void Gui::nextColumn()
+    {
+        ImGui::NextColumn();
     }
 
     bool Gui::addCheckBox(const char label[], bool& var, bool sameLine)
     {
         if (sameLine) ImGui::SameLine();
         return ImGui::Checkbox(label, &var);
+    }
+
+    bool Gui::addCheckBox(const char label[], int& var, bool sameLine)
+    {
+        bool value = (var != 0);
+        bool modified = addCheckBox(label, value, sameLine);
+        var = (value ? 1 : 0);
+        return modified;
+    }
+
+    bool Gui::addCheckboxes(const char label[], bool* pData, uint32_t numCheckboxes, bool sameLine)
+    {
+        bool modified = false;
+        std::string labelString(std::string("##") + label + '0');
+
+        for (uint32_t i = 0; i < numCheckboxes - 1; ++i)
+        {
+            labelString[labelString.size() - 1] = '0' + static_cast<int32_t>(i);
+            modified |= addCheckBox(labelString.c_str(), pData[i], (!i) ? sameLine : true);
+        }
+
+        addCheckBox(label, pData[numCheckboxes - 1], true );
+
+        return modified;
+    }
+
+    bool Gui::addBool2Var(const char label[], glm::bvec2& var, bool sameLine)
+    {
+        return addCheckboxes(label, glm::value_ptr(var), 2, sameLine);
+    }
+
+    bool Gui::addBool3Var(const char label[], glm::bvec3& var, bool sameLine)
+    {
+        return addCheckboxes(label, glm::value_ptr(var), 3, sameLine);
+    }
+
+    bool Gui::addBool4Var(const char label[], glm::bvec4& var, bool sameLine)
+    {
+        return addCheckboxes(label, glm::value_ptr(var), 4, sameLine);
     }
 
     void Gui::addText(const char text[], bool sameLine)
@@ -274,14 +377,14 @@ namespace Falcor
         return ImGui::Button(label);
     }
 
-    bool Gui::addRadioButtons(const RadioButtonGroup& buttons, int32_t& activeID)
+    bool Gui::addRadioButtons(const RadioButtonGroup& buttons, uint32_t& activeID)
     {
         int32_t oldValue = activeID;
 
         for (const auto& button : buttons)
         {
             if (button.sameLine) ImGui::SameLine();
-            ImGui::RadioButton(button.label.c_str(), &activeID, button.buttonID);
+            ImGui::RadioButton(button.label.c_str(), (int*)&activeID, button.buttonID);
         }
 
         return oldValue != activeID;
@@ -289,12 +392,40 @@ namespace Falcor
 
     bool Gui::beginGroup(const char name[], bool beginExpanded)
     {
-        ImGuiTreeNodeFlags flags = beginExpanded ? ImGuiTreeNodeFlags_DefaultOpen :  0;
-        bool visible = mGroupStackSize ? ImGui::TreeNode(name) : ImGui::CollapsingHeader(name, flags);
+        std::string nameString(name);
+        ImGuiTreeNodeFlags flags = beginExpanded ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+        if (mOpenWindows[nameString]) ImGui::SetNextTreeNodeOpen(true);
+        bool visible = mGroupStackSize ? ImGui::TreeNodeEx(name, flags) : ImGui::CollapsingHeader(name, flags);
         if (visible)
         {
             mGroupStackSize++;
         }
+
+        std::string popupName = std::string("HeaderOptions##") + nameString;
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) { ImGui::OpenPopup(popupName.c_str()); }
+
+        if (ImGui::BeginPopup(popupName.c_str()))
+        {
+            if (ImGui::Button("Open in Window"))
+            {
+                mOpenWindows[nameString] = true;
+                ImGui::CloseCurrentPopup();
+            }
+            if(ImGui::Button("Cancel")) { ImGui::CloseCurrentPopup();}
+            ImGui::EndPopup();
+        }
+
+        if (visible && mOpenWindows.find(nameString) != mOpenWindows.end())
+        {
+            const ImGuiIO& io = ImGui::GetIO();
+            uint32_t w = (uint32_t)(io.DisplaySize.x * 0.25f);
+            uint32_t h = (uint32_t)(io.DisplaySize.y * 0.4f);
+            uint32_t y = 20;
+            uint32_t x = static_cast<uint32_t>(io.DisplaySize.x) - w - 20;
+            pushWindow(name, w, h, x, y, true, true, true, true);
+            mGroupHasWindow.push_back(mOpenWindows[nameString]);
+        }
+
         return visible;
     }
 
@@ -302,53 +433,242 @@ namespace Falcor
     {
         assert(mGroupStackSize >= 1);
         mGroupStackSize--;
+
+        if (mGroupHasWindow.back())
+        {
+            popWindow();
+        }
         if (mGroupStackSize)
         {
             ImGui::TreePop();
         }
+        mGroupHasWindow.pop_back();
     }
 
-    bool Gui::addFloatVar(const char label[], float& var, float minVal, float maxVal, float step, bool sameLine)
+    bool Gui::addFloatVar(const char label[], float& var, float minVal, float maxVal, float step, bool sameLine, const char* displayFormat)
     {
         if (sameLine) ImGui::SameLine();
-        bool b = ImGui::DragFloat(label, &var, step);
+        bool b = ImGui::DragFloat(label, &var, step, minVal, maxVal, displayFormat);
         var = clamp(var, minVal, maxVal);
         return b;
     }
 
-    bool Gui::addFloat2Var(const char label[], glm::vec2& var, float minVal, float maxVal, bool sameLine)
+    bool Gui::addFloat2Var(const char label[], glm::vec2& var, float minVal, float maxVal, float step, bool sameLine, const char* displayFormat)
     {
         if (sameLine) ImGui::SameLine();
-        float speed = min(1.0f, (maxVal - minVal) * 0.01f);
-        bool b = ImGui::DragFloat2(label, glm::value_ptr(var), speed, minVal, maxVal);
+        bool b = ImGui::DragFloat2(label, glm::value_ptr(var), step, minVal, maxVal, displayFormat);
         var = clamp(var, minVal, maxVal);
         return b;
     }
 
-    bool Gui::addFloat3Var(const char label[], glm::vec3& var, float minVal, float maxVal, bool sameLine)
+    bool Gui::addFloat3Var(const char label[], glm::vec3& var, float minVal, float maxVal, float step, bool sameLine, const char* displayFormat)
     {
         if (sameLine) ImGui::SameLine();
-        float speed = min(1.0f, (maxVal - minVal) * 0.01f);
-        bool b = ImGui::DragFloat3(label, glm::value_ptr(var), speed, minVal, maxVal);
+        bool b = ImGui::DragFloat3(label, glm::value_ptr(var), step, minVal, maxVal, displayFormat);
         var = clamp(var, minVal, maxVal);
         return b;
     }
 
-    bool Gui::addFloat4Var(const char label[], glm::vec4& var, float minVal, float maxVal, bool sameLine)
+    bool Gui::addFloat4Var(const char label[], glm::vec4& var, float minVal, float maxVal, float step, bool sameLine, const char* displayFormat)
     {
         if (sameLine) ImGui::SameLine();
-        float speed = min(1.0f, (maxVal - minVal) * 0.01f);
-        bool b = ImGui::DragFloat4(label, glm::value_ptr(var), speed, maxVal, minVal);
+        bool b = ImGui::DragFloat4(label, glm::value_ptr(var), step, minVal, maxVal, displayFormat);
         var = clamp(var, minVal, maxVal);
         return b;
     }
 
     bool Gui::addIntVar(const char label[], int32_t& var, int minVal, int maxVal, int step, bool sameLine)
     {
+        ImGui::PushItemWidth(200);
         if (sameLine) ImGui::SameLine();
         bool b = ImGui::InputInt(label, &var, step);
         var = clamp(var, minVal, maxVal);
+        ImGui::PopItemWidth();
         return b;
+    }
+
+    bool Gui::addInt2Var(const char label[], glm::ivec2& var, int32_t minVal, int32_t maxVal, bool sameLine)
+    {
+        if (sameLine) ImGui::SameLine();
+        bool b = ImGui::InputInt2(label, static_cast<int*>(glm::value_ptr(var)), 0);
+        var = clamp(var, minVal, maxVal);
+        return b;
+    }
+
+    bool Gui::addInt3Var(const char label[], glm::ivec3& var, int32_t minVal, int32_t maxVal, bool sameLine)
+    {
+        if (sameLine) ImGui::SameLine();
+        bool b = ImGui::InputInt3(label, static_cast<int*>(glm::value_ptr(var)), 0);
+        var = clamp(var, minVal, maxVal);
+        return b;
+    }
+
+    bool Gui::addInt4Var(const char label[], glm::ivec4& var, int32_t minVal, int32_t maxVal, bool sameLine)
+    {
+        if (sameLine) ImGui::SameLine();
+        bool b = ImGui::InputInt4(label, static_cast<int*>(glm::value_ptr(var)), 0);
+        var = clamp(var, minVal, maxVal);
+        return b;
+    }
+
+    bool Gui::addIntSlider(const char label[], int32_t& var, int minVal, int maxVal, bool sameLine)
+    {
+        ImGui::PushItemWidth(200);
+        if (sameLine) ImGui::SameLine();
+        bool b = ImGui::SliderInt(label, &var, minVal, maxVal);
+        var = clamp(var, minVal, maxVal);
+        ImGui::PopItemWidth();
+        return b;
+    }
+
+    bool Gui::addFloatSlider(const char label[], float& var, float minVal, float maxVal, bool sameLine, const char* displayFormat)
+    {
+        if (sameLine) ImGui::SameLine();
+        bool b = ImGui::SliderFloat(label, &var, minVal, maxVal);
+        var = clamp(var, minVal, maxVal);
+        return b;
+    }
+
+#define add_int_slider(FuncName, SliderFunc, TypeName, Type) \
+    bool Gui::FuncName(const char label[], TypeName& var, Type minVal, Type maxVal, bool sameLine) \
+    {\
+        if (sameLine) ImGui::SameLine();\
+        bool b = ImGui::SliderFunc(label, glm::value_ptr(var), minVal, maxVal);\
+        var = clamp(var, minVal, maxVal);\
+        return b;\
+    }
+
+    add_int_slider(addInt2Slider, SliderInt2, glm::ivec2, int32_t);
+    add_int_slider(addInt3Slider, SliderInt3, glm::ivec3, int32_t);
+    add_int_slider(addInt4Slider, SliderInt4, glm::ivec4, int32_t);
+
+#define add_float_slider(FuncName, SliderFunc, TypeName, Type) \
+    bool Gui::FuncName(const char label[], TypeName& var, Type minVal, Type maxVal, bool sameLine, const char* displayFormat) \
+    {\
+        if (sameLine) ImGui::SameLine();\
+        bool b = ImGui::SliderFunc(label, glm::value_ptr(var), minVal, maxVal);\
+        var = clamp(var, minVal, maxVal);\
+        return b;\
+    }
+
+    add_float_slider(addFloat2Slider, SliderFloat2, glm::vec2, float);
+    add_float_slider(addFloat3Slider, SliderFloat3, glm::vec3, float);
+    add_float_slider(addFloat4Slider, SliderFloat4, glm::vec4, float);
+
+    template <>
+    bool Gui::addFloatVecVar<glm::vec2>(const char label[], glm::vec2& var, float minVal, float maxVal, float step, bool sameLine)
+    {
+        return addFloat2Var(label, var, minVal, maxVal, step, sameLine);
+    }
+
+    template <>
+    bool Gui::addFloatVecVar<glm::vec3>(const char label[], glm::vec3& var, float minVal, float maxVal, float step, bool sameLine)
+    {
+        return addFloat3Var(label, var, minVal, maxVal, step, sameLine);
+    }
+
+    template <>
+    bool Gui::addFloatVecVar<glm::vec4>(const char label[], glm::vec4& var, float minVal, float maxVal, float step, bool sameLine)
+    {
+        return addFloat4Var(label, var, minVal, maxVal, step, sameLine);
+    }
+
+#define add_matrix_var(TypeName) template bool Gui::addMatrixVar(const char label[], TypeName& var, float minVal , float maxVal, bool sameLine)
+
+    add_matrix_var(glm::mat2x2);
+    add_matrix_var(glm::mat2x3);
+    add_matrix_var(glm::mat2x4);
+    add_matrix_var(glm::mat3x2);
+    add_matrix_var(glm::mat3x3);
+    add_matrix_var(glm::mat3x4);
+    add_matrix_var(glm::mat4x2);
+    add_matrix_var(glm::mat4x3);
+    add_matrix_var(glm::mat4x4);
+
+#undef add_matrix_var
+
+
+    template<typename MatrixType>
+    bool Gui::addMatrixVar(const char label[], MatrixType& var, float minVal, float maxVal, bool sameLine)
+    {
+        std::string labelString(label);
+        std::string hiddenLabelString("##");
+        hiddenLabelString += labelString + "[0]";
+        
+        ImVec2 topLeft = ImGui::GetCursorScreenPos();
+        ImVec2 bottomRight;
+        
+        bool b = false;
+        
+        for (uint32_t i = 0; i < static_cast<uint32_t>(var.length()); ++i)
+        {
+            std::string& stringToDisplay = hiddenLabelString;
+            hiddenLabelString[hiddenLabelString.size() - 2] = '0' + static_cast<int32_t>(i);
+            if (i == var.length() - 1)
+            {
+               stringToDisplay = labelString;
+            }
+
+            b |= addFloatVecVar<typename MatrixType::col_type>(stringToDisplay.c_str(), var[i], minVal, maxVal, 0.001f, sameLine);
+            
+            if (i == 0)
+            {
+                ImGui::SameLine();
+                bottomRight = ImGui::GetCursorScreenPos();
+                float oldSpacing = ImGui::GetStyle().ItemSpacing.y;
+                ImGui::GetStyle().ItemSpacing.y = 0.0f;
+                ImGui::Dummy({});
+                ImGui::Dummy({});
+                ImGui::GetStyle().ItemSpacing.y = oldSpacing;
+                ImVec2 correctedCursorPos = ImGui::GetCursorScreenPos();
+                correctedCursorPos.y += oldSpacing;
+                ImGui::SetCursorScreenPos(correctedCursorPos);
+                bottomRight.y = ImGui::GetCursorScreenPos().y;
+            }
+            else if(i == 1)
+            {
+                bottomRight.y = topLeft.y + (bottomRight.y - topLeft.y) * (var.length());
+                bottomRight.x -= ImGui::GetStyle().ItemInnerSpacing.x * 3 - 1;
+                bottomRight.y -= ImGui::GetStyle().ItemInnerSpacing.y  - 1;
+                topLeft.x -= 1; topLeft.y -= 1;
+                auto colorVec4 =ImGui::GetStyleColorVec4(ImGuiCol_ScrollbarGrab); colorVec4.w *= 0.25f;
+                ImU32 color = ImGui::ColorConvertFloat4ToU32(colorVec4);
+                ImGui::GetWindowDrawList()->AddRect(topLeft, bottomRight, color);
+            }
+        }
+        return b;
+    }
+
+    bool Gui::beginMainMenuBar()
+    {
+        bool isOpen = ImGui::BeginMainMenuBar();
+        ImGui::SetWindowFocus();
+        return isOpen;
+    }
+
+    bool Gui::beginDropDownMenu(const char label[])
+    {
+        return ImGui::BeginMenu(label);
+    }
+
+    void Gui::endDropDownMenu()
+    {
+        ImGui::EndMenu();
+    }
+
+    bool Gui::addMenuItem(const char label[])
+    {
+        return ImGui::MenuItem(label);
+    }
+
+    bool Gui::addMenuItem(const char label[], bool& var)
+    {
+        return ImGui::MenuItem(label, nullptr, &var);
+    }
+
+    void Gui::endMainMenuBar()
+    {
+        ImGui::EndMainMenuBar();
     }
 
     bool Gui::addRgbColor(const char label[], glm::vec3& var, bool sameLine)
@@ -361,6 +681,38 @@ namespace Falcor
     {
         if (sameLine) ImGui::SameLine();
         return ImGui::ColorEdit4(label, glm::value_ptr(var));
+    }
+
+    bool Gui::dragDropSource(const char label[], const char dataLabel[], const std::string& payloadString)
+    {
+        if (ImGui::IsItemHovered() && (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1))) ImGui::SetWindowFocus();
+        if (!(ImGui::IsWindowFocused())) return false;
+        bool b = ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID);
+        if (b)
+        {
+            ImGui::SetDragDropPayload(dataLabel, payloadString.data(), payloadString.size() * sizeof(payloadString[0]), ImGuiCond_Once);
+            ImGui::EndDragDropSource();
+        }
+        return b;
+    }
+
+    bool Gui::dragDropDest(const char dataLabel[], std::string& payloadString)
+    {
+        bool b = false;
+        if (ImGui::BeginDragDropTarget())
+        {
+            auto dragDropPayload = ImGui::AcceptDragDropPayload(dataLabel);
+            b = dragDropPayload && dragDropPayload->IsDataType(dataLabel) && (dragDropPayload->Data != nullptr);
+            if (b)
+            {
+                payloadString.resize(dragDropPayload->DataSize);
+                std::memcpy(&payloadString.front(), dragDropPayload->Data, dragDropPayload->DataSize);
+            }
+
+            ImGui::EndDragDropTarget();
+        }
+        
+        return b;
     }
 
     bool Gui::onKeyboardEvent(const KeyboardEvent& event)
@@ -399,6 +751,25 @@ namespace Falcor
         }
     }
 
+    void Gui::addImage(const char label[], const Texture::SharedPtr& pTex, glm::vec2 size, bool maintainRatio, bool sameLine)
+    {
+        if (size == vec2(0)) size = getCurrentWindowSize();
+
+        ImGui::PushID(label);
+        if (sameLine) ImGui::SameLine();
+        mpImages.push_back(pTex);
+        float aspectRatio = maintainRatio ? (static_cast<float>(pTex->getHeight()) / static_cast<float>(pTex->getWidth())) : 1.0f;
+        ImGui::Image(reinterpret_cast<ImTextureID>(mpImages.size()), { size.x, maintainRatio ? size.x  * aspectRatio : size.y });
+        ImGui::PopID();
+    }
+
+    bool Gui::addImageButton(const char label[], const Texture::SharedPtr& pTex, glm::vec2 size, bool maintainRatio, bool sameLine)
+    {
+        mpImages.push_back(pTex);
+        float aspectRatio = maintainRatio ? (static_cast<float>(pTex->getHeight()) / static_cast<float>(pTex->getWidth())) : 1.0f;
+        return ImGui::ImageButton(reinterpret_cast<ImTextureID>(mpImages.size()), { size.x, maintainRatio ? size.x  * aspectRatio : size.y });
+    }
+
     bool Gui::onMouseEvent(const MouseEvent& event)
     {
         ImGuiIO& io = ImGui::GetIO();
@@ -434,23 +805,60 @@ namespace Falcor
         return io.WantCaptureMouse;
     }
 
-    void Gui::pushWindow(const char label[], uint32_t width, uint32_t height, uint32_t x, uint32_t y, bool showTitleBar)
+    void Gui::pushWindow(const char label[], uint32_t width, uint32_t height, uint32_t x, uint32_t y, bool showTitleBar, bool allowMove, bool focus, bool allowClose)
     {
+        if (mOpenWindows.find(label) == mOpenWindows.end()) mOpenWindows[label] = true;
+        if (allowClose)
+        {
+            if (!showTitleBar)
+            {
+                std::string warning("showTitleBar is set to false on the window ");
+                logWarning(warning.append(label).append(". The window will not be able to display a close button."));
+            }
+            if (!mOpenWindows[label]) return;
+        }
+        
         ImVec2 pos{ float(x), float(y) };
         ImVec2 size{ float(width), float(height) };
-        ImGui::SetNextWindowSize(size, ImGuiSetCond_FirstUseEver);
-        ImGui::SetNextWindowPos(pos, ImGuiSetCond_FirstUseEver);
+        ImGui::SetNextWindowSize(size, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
         int flags = 0;
-        if (!showTitleBar)
-        {
-            flags |= ImGuiWindowFlags_NoTitleBar;
-        }
-        ImGui::Begin(label, nullptr, flags);
+        if (!showTitleBar) flags |= ImGuiWindowFlags_NoTitleBar;
+        if (!allowMove)  flags |= ImGuiWindowFlags_NoMove;
+        if (!focus) flags |= ImGuiWindowFlags_NoFocusOnAppearing;
+        
+        ImGui::Begin(label, allowClose ? &mOpenWindows[label] : nullptr, flags);
+
+        if (allowClose && !mOpenWindows[label])  ImGui::End();
+        else  ImGui::PushFont(mpActiveFont);
     }
 
     void Gui::popWindow()
     {
+        ImGui::PopFont();
         ImGui::End();
+    }
+
+    void Gui::setCurrentWindowPos(uint32_t x, uint32_t y)
+    {
+        ImGui::SetWindowPos({ static_cast<float>(x), static_cast<float>(y) });
+    }
+
+    glm::vec2 Gui::getCurrentWindowPos()
+    {
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        return { windowPos.x, windowPos.y };
+    }
+
+    void Gui::setCurrentWindowSize(uint32_t width, uint32_t height)
+    {
+        ImGui::SetWindowSize({ static_cast<float>(width), static_cast<float>(height) });
+    }
+
+    glm::vec2 Gui::getCurrentWindowSize()
+    {
+        ImVec2 windowSize = ImGui::GetWindowSize();
+        return {windowSize.x, windowSize.y};
     }
 
     void Gui::addSeparator()
@@ -498,10 +906,11 @@ namespace Falcor
         return b && prevItem != curItem;
     }
 
-    void Gui::setGlobalFontScaling(float scale)
+    void Gui::setGlobalGuiScaling(float scale)
     {
         ImGuiIO& io = ImGui::GetIO();
         io.FontGlobalScale = scale;
+        ImGui::GetStyle().ScaleAllSizes(scale);
     }
 
     bool Gui::addTextBox(const char label[], char buf[], size_t bufSize, uint32_t lineCount)
@@ -526,14 +935,31 @@ namespace Falcor
         char buf[maxSize];
         copyStringToBuffer(buf, maxSize, text);
 
+        bool result = false;
         if (lineCount > 1)
         {
-            return ImGui::InputTextMultiline(label, buf, maxSize, ImVec2(-1.0f, ImGui::GetTextLineHeight() * lineCount), flags);
+            result = ImGui::InputTextMultiline(label, buf, maxSize, ImVec2(-1.0f, ImGui::GetTextLineHeight() * lineCount), flags);
         }
         else
         {
-            return ImGui::InputText(label, buf, maxSize, flags);
+            result = ImGui::InputText(label, buf, maxSize, flags);
         }
+
+        text = std::string(buf);
+        return result;
+    }
+
+    bool Gui::addMultiTextBox(const char label[], const std::vector<std::string>& textLabels, std::vector<std::string>& textEntries)
+    {
+        static uint32_t sIdOffset = 0;
+        bool result = false;
+
+        for (uint32_t i = 0; i < textEntries.size(); ++i)
+        {
+            result |= addTextBox(std::string(textLabels[i] + "##" + std::to_string(sIdOffset)).c_str(), textEntries[i]);
+        }
+
+        return addButton(label) | result;
     }
 
     void Gui::addTooltip(const char tip[], bool sameLine)
@@ -562,5 +988,56 @@ namespace Falcor
         bool b = addFloat3Var(label, dir, -1, 1);
         direction = glm::normalize(dir);
         return b;
+    }
+
+    void Gui::compileFonts()
+    {
+        uint8_t* pFontData;
+        int32_t width, height;
+
+        // Initialize font data
+        ImGui::GetIO().Fonts->GetTexDataAsAlpha8(&pFontData, &width, &height);
+        Texture::SharedPtr pTexture = Texture::create2D(width, height, ResourceFormat::R8Unorm, 1, 1, pFontData);
+        mpProgramVars->setTexture("gFont", pTexture);
+    }
+
+    void Gui::addFont(const std::string& name, const std::string& filename)
+    {
+        std::string fullpath;
+        if (findFileInDataDirectories(filename, fullpath) == false)
+        {
+            logWarning("Can't find font file `" + filename + "`");
+            return;
+        }
+
+        float size = 14.0f * mScaleFactor;
+        ImFont* pFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(fullpath.c_str(), size);
+        mFontMap[name] = pFont;
+        compileFonts();
+    }
+
+    void Gui::setActiveFont(const std::string& font)
+    {
+        const auto& it = mFontMap.find(font);
+        if (it == mFontMap.end())
+        {
+            logWarning("Can't find a font named `" + font + "`");
+            mpActiveFont = nullptr;
+        }
+        mpActiveFont = it->second;
+    }
+
+    bool Gui::isWindowOpen(const char label[])
+    {
+        const auto it = mOpenWindows.find(std::string(label));
+        return (it !=  mOpenWindows.end()) && it->second;
+    }
+
+    void Gui::setWindowOpen(const char label[], bool isOpen)
+    {
+        std::string labelString(label);
+        auto it = mOpenWindows.find(labelString);
+        if (it == mOpenWindows.end()) logWarning(std::string("Gui Window ") + labelString + " does not exist.");
+        it->second = isOpen;
     }
 }

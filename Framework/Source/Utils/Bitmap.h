@@ -30,6 +30,8 @@
 
 namespace Falcor
 {
+    class Texture;
+
     /** A class representing a memory bitmap
     */
     class Bitmap : public std::enable_shared_from_this<Bitmap>
@@ -47,6 +49,8 @@ namespace Falcor
         {
             PngFile,    //< PNG file for lossless compressed 8-bits images with optional alpha
             JpegFile,   //< JPEG file for lossy compressed 8-bits images without alpha
+            TgaFile,    //< TGA file for lossless uncompressed 8-bits images with optional alpha
+            BmpFile,    //< BMP file for lossless uncompressed 8-bits images with optional alpha
             PfmFile,    //< PFM file for floating point HDR images with 32-bit float per channel
             ExrFile,    //< EXR file for floating point HDR images with 16-bit float per channel
         };
@@ -73,6 +77,12 @@ namespace Falcor
         */
         static void saveImage(const std::string& filename, uint32_t width, uint32_t height, FileFormat fileFormat, ExportFlags exportFlags, ResourceFormat resourceFormat, bool isTopDown, void* pData);
 
+        /**  Open dialog to save image to a file
+            \param[in] pTexture Texture to save to file
+             
+        */
+        static void saveImageDialog(const std::shared_ptr<Texture>& pTexture);
+
         ~Bitmap();
 
         /** Get a pointer to the bitmap's data store
@@ -91,6 +101,18 @@ namespace Falcor
         */
         ResourceFormat getFormat() const { return mFormat; }
 
+        /** Get the file dialog filter vec for images.
+            \param[in] format If set to ResourceFormat::Unknown, will return all the supported image file formats. If set to something else, will only return file types which support this format.
+        */
+        static FileDialogFilterVec getFileDialogFilters(ResourceFormat format = ResourceFormat::Unknown);
+
+
+        static std::string getFilExtFromResourceFormat(ResourceFormat format);
+
+        /** Get the file format flags for the image extension
+            \param[in] ext The image file extension to get the 
+        */
+        static FileFormat getFormatFromFileExtension(const std::string& ext);
     private:
         Bitmap() = default;
         uint8_t* mpData = nullptr;

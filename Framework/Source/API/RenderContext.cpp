@@ -35,12 +35,9 @@
 
 namespace Falcor
 {
-    CommandSignatureHandle RenderContext::spDrawCommandSig = nullptr;
-    CommandSignatureHandle RenderContext::spDrawIndexCommandSig = nullptr;
-
     RenderContext::RenderContext()
     {
-        if (spDrawCommandSig == nullptr)
+        if (gpDrawCommandSig == nullptr)
         {
             initDrawCommandSignatures();
         }
@@ -110,19 +107,16 @@ namespace Falcor
 
     void RenderContext::applyGraphicsVars()
     {
-        if (mpGraphicsVars->apply(const_cast<RenderContext*>(this), mBindGraphicsRootSig) == false)
+        if (mpGraphicsVars->apply(this, mBindGraphicsRootSig) == false)
         {
             logWarning("RenderContext::prepareForDraw() - applying GraphicsVars failed, most likely because we ran out of descriptors. Flushing the GPU and retrying");
             flush(true);
-            bool b = mpGraphicsVars->apply(const_cast<RenderContext*>(this), mBindGraphicsRootSig);
-            assert(b);
+            if (!mpGraphicsVars->apply(this, mBindGraphicsRootSig))
+            {
+                logError("RenderContext::applyGraphicsVars() - applying GraphicsVars failed, most likely because we ran out of descriptors", true);
+                assert(false);
+            }
         }
-    }
-
-    void RenderContext::reset()
-    {
-        ComputeContext::reset();
-        mBindGraphicsRootSig = true;
     }
 
     void RenderContext::flush(bool wait)
@@ -131,3 +125,4 @@ namespace Falcor
         mBindGraphicsRootSig = true;
     }
 }
+

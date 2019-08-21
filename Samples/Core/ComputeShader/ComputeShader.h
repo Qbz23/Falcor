@@ -27,16 +27,16 @@
 ***************************************************************************/
 #pragma once
 #include "Falcor.h"
-#include "SampleTest.h"
 
 using namespace Falcor;
 
-class ComputeShader : public SampleTest
+class ComputeShader : public Renderer
 {
 public:
-    void onLoad() override;
-    void onFrameRender() override;
-    void onGuiRender() override;
+    void onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext) override;
+    void onFrameRender(SampleCallbacks* pSample, RenderContext* pContext, const Fbo::SharedPtr& pTargetFbo) override;
+    void onGuiRender(SampleCallbacks* pSample, Gui* pGui) override;
+    void onResizeSwapChain(SampleCallbacks* pSample, uint32_t width, uint32_t height);
 
 private:
     ComputeProgram::SharedPtr mpProg;
@@ -46,9 +46,6 @@ private:
     Texture::SharedPtr mpImage;
 
     Texture::SharedPtr mpTmpTexture;
-    void loadImage();
-    void loadImageFromFile(std::string file);
-
-    //testing
-    void onInitializeTesting() override;
+    void loadImage(SampleCallbacks* pSample);
+    void loadImageFromFile(SampleCallbacks* pSample, std::string file);
 };

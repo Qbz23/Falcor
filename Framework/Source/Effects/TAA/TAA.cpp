@@ -1,14 +1,20 @@
 /***************************************************************************
 * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
 ***************************************************************************/
+#include "Framework.h"
 #include "TAA.h"
+#include "Utils/Gui.h"
+#include "API/RenderContext.h"
+
 namespace Falcor
 {
+    const char* TemporalAA::kDesc = "Temporal Anti-Aliasing";
+
     static const char* kShaderFilename = "Effects/TAA.ps.slang";
 
     TemporalAA::~TemporalAA() = default;
 
-    TemporalAA::TemporalAA()
+    TemporalAA::TemporalAA() : RenderPass("TemporalAA")
     {
         Sampler::Desc samplerDesc;
         samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
@@ -16,22 +22,27 @@ namespace Falcor
         createProgram();
     }
 
-    TemporalAA::UniquePtr TemporalAA::create()
+    TemporalAA::SharedPtr TemporalAA::create(const Dictionary& dict)
     {
         TemporalAA* pTaa = new TemporalAA();
-        return TemporalAA::UniquePtr(pTaa);
+        return TemporalAA::SharedPtr(pTaa);
     }
 
-    void TemporalAA::renderUI(Gui* pGui)
+    void TemporalAA::renderUI(Gui* pGui, const char* uiGroup)
     {
+        if(!uiGroup || pGui->beginGroup(uiGroup))
+        {
             pGui->addFloatVar("Alpha", mControls.alpha, 0, 1.0f);
             pGui->addFloatVar("Color-Box Sigma", mControls.colorBoxSigma, 0, 15);
+
+            if (uiGroup) pGui->endGroup();
+        }
     }
 
     void TemporalAA::createProgram()
     {
         mpProgram = FullScreenPass::create(kShaderFilename);
-        ProgramReflection::SharedConstPtr pReflector = mpProgram->getProgram()->getActiveVersion()->getReflector();
+        ProgramReflection::SharedConstPtr pReflector = mpProgram->getProgram()->getReflector();
         mpProgVars = GraphicsVars::create(pReflector);
         mpCB = mpProgVars->getConstantBuffer("PerFrameCB");
 
@@ -70,5 +81,49 @@ namespace Falcor
         pRenderContext->pushGraphicsVars(mpProgVars);
         mpProgram->execute(pRenderContext);
         pRenderContext->popGraphicsVars();
+    }
+
+    static const std::string& kMotionVec = "motionVecs";
+    static const std::string& kColorIn = "colorIn";
+    static const std::string& kColorOut = "colorOut";
+
+    RenderPassReflection TemporalAA::reflect() const
+    {
+        RenderPassReflection reflection;
+        reflection.addInput(kMotionVec, "Screen-space motion vectors");
+        reflection.addInput(kColorIn, "Color-buffer of the current frame");
+        reflection.addOutput(kColorOut, "Anti-aliased color buffer");
+        return reflection;
+    }
+
+    void TemporalAA::allocatePrevColor(const Texture* pColorOut)
+    {
+        bool allocate = mpPrevColor == nullptr;
+        allocate = allocate || (mpPrevColor->getWidth() != pColorOut->getWidth());
+        allocate = allocate || (mpPrevColor->getHeight() != pColorOut->getHeight());
+        allocate = allocate || (mpPrevColor->getDepth() != pColorOut->getDepth());
+        allocate = allocate || (mpPrevColor->getFormat() != pColorOut->getFormat());
+        assert(pColorOut->getSampleCount() == 1);
+
+        if (allocate)
+        {
+            mpPrevColor = Texture::create2D(pColorOut->getWidth(), pColorOut->getHeight(), pColorOut->getFormat(), 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+        }
+    }
+
+    void TemporalAA::execute(RenderContext* pContext, const RenderData* pData)
+    {
+        const auto& pColorIn = pData->getTexture(kColorIn);
+        const auto& pColorOut = pData->getTexture(kColorOut);
+        const auto& pMotionVec = pData->getTexture(kMotionVec);
+        allocatePrevColor(pColorOut.get());
+
+        Fbo::SharedPtr pFbo = Fbo::create();
+        pFbo->attachColorTarget(pColorOut, 0);
+        pContext->getGraphicsState()->pushFbo(pFbo);
+        execute(pContext, pColorIn, mpPrevColor, pMotionVec);
+        pContext->getGraphicsState()->popFbo();
+
+        pContext->blit(pColorOut->getSRV(), mpPrevColor->getRTV());
     }
 }

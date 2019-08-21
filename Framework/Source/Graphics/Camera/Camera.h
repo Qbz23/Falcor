@@ -32,19 +32,22 @@
 #include "Data/HostDeviceData.h"
 #include <vector>
 #include "Graphics/Paths/MovableObject.h"
+#include "Utils/PatternGenerators/PatternGenerator.h"
 
 namespace Falcor
 {
     struct BoundingBox;
     class ConstantBuffer;
+    class Gui;
 
     /** Camera class. Default transform matrices are interpreted as left eye transform during stereo rendering.
     */
-    class Camera : public IMovableObject, public std::enable_shared_from_this<Camera>
+    class Camera : public IMovableObject, public inherit_shared_from_this<IMovableObject, Camera>
     {
     public:
         using SharedPtr = std::shared_ptr<Camera>;
         using SharedConstPtr = std::shared_ptr<const Camera>;
+        SharedPtr shared_from_this() { return inherit_shared_from_this<IMovableObject, Camera>::shared_from_this(); }
 
         // Default dimensions of full frame cameras and 35mm film
         static const float kDefaultFrameHeight;
@@ -78,9 +81,33 @@ namespace Falcor
         */
         float getFocalLength() const { return mData.focalLength; }
 
+        /** Set the camera's film plane height in mm.
+        */
+        void setFrameHeight(float height) { mData.frameHeight = height; mDirty = true; }
+
+        /** Get the camera's film plane height in mm.
+        */
+        float getFrameHeight() const { return mData.frameHeight; }
+
+        /** Set the camera's focal distance in scene units.  Used for depth-of-field.
+        */
+        void setFocalDistance(float distance) { mData.focalDistance = distance; mDirty = true; }
+
+        /** Get the camera's focal distance in scene units.
+        */
+        float getFocalDistance() const { return mData.focalDistance; }
+
+        /** Set camera aperture radius in scene units. See FalcorMath.h for helper functions to convert between aperture f-number.
+        */
+        void setApertureRadius(float radius) { mData.apertureRadius = radius; mDirty = true; }
+
+        /** Get camera aperture radius in scene units. See FalcorMath.h for helper functions to convert between aperture f-number.
+        */
+        float getApertureRadius() const { return mData.apertureRadius; }
+
         /** Get the camera's world space position.
         */
-        const glm::vec3& getPosition() const { return mData.position; }
+        const glm::vec3& getPosition() const { return mData.posW; }
 
         /** Get the camera's world space up vector.
         */
@@ -92,7 +119,7 @@ namespace Falcor
 
         /** Set the camera's world space position.
         */
-        void setPosition(const glm::vec3& pos) { mData.position = pos; mDirty = true; }
+        void setPosition(const glm::vec3& posW) { mData.posW = posW; mDirty = true; }
 
         /** Set the camera's world space up vector.
         */
@@ -118,11 +145,19 @@ namespace Falcor
         */
         float getFarPlane() const { return mData.farZ; }
 
+        /** Set a pattern generator. If a generator is set, then a jitter will be set every frame based on the generator
+        */
+        void setPatternGenerator(const PatternGenerator::SharedPtr& pGenerator, const vec2& scale = vec2(1));
+
+        /** Get the bound pattern generator
+        */
+        const PatternGenerator::SharedPtr& getPatternGenerator() const { return mJitterPattern.pGenerator; }
+
         /** Set the camera's jitter.
             \param[in] jitterX Subpixel offset along X axis divided by screen width
             \param[in] jitterY Subpixel offset along Y axis divided by screen height
         */
-        void setJitter(float jitterX, float jitterY) { mData.jitterX = jitterX; mData.jitterY = jitterY; mDirty = true; }
+        void setJitter(float jitterX, float jitterY);
         float getJitterX() const { return mData.jitterX; }
         float getJitterY() const { return mData.jitterY; }
 
@@ -200,10 +235,17 @@ namespace Falcor
         static uint32_t getShaderDataSize() 
         {
             static const size_t dataSize = sizeof(CameraData);
-            static_assert(dataSize % sizeof(float) * 4 == 0, "Camera::CameraData size should be a multiple of 16");
+            static_assert(dataSize % (sizeof(vec4)) == 0, "Camera::CameraData size should be a multiple of 16");
             return dataSize;
         }
 
+        /** Render the UI
+        */
+        void renderUI(Gui* pGui, const char* uiGroup = nullptr);
+
+        /** Begin frame. Should be called once per-frame, this is where we store the previous frame matrices
+        */
+        void beginFrame();
     private:
         Camera();
 
@@ -217,7 +259,7 @@ namespace Falcor
 
         void calculateCameraParameters() const;
         mutable CameraData mData;
-        mutable glm::mat4 viewProjMatNoJitter;
+        mutable glm::mat4 mViewProjMatNoJitter;
 
         struct 
         {
@@ -225,5 +267,13 @@ namespace Falcor
             float       negW;   ///< Camera frustum plane, sign of the coordinates
             glm::vec3   sign;   ///< Camera frustum plane position
         } mutable mFrustumPlanes[6];
+
+        struct  
+        {
+            PatternGenerator::SharedPtr pGenerator;
+            vec2 scale;
+        } mJitterPattern;
+
+        void setJitterInternal(float jitterX, float jitterY);
     };
 }

@@ -34,6 +34,8 @@
 #include "Graphics/Program//Program.h"
 #include "Graphics/GraphicsState.h"
 
+struct ImFont;
+
 namespace Falcor
 {
     class RenderContext;
@@ -53,7 +55,7 @@ namespace Falcor
         */
         struct DropdownValue
         {
-            int32_t value;      ///< User defined index. Should be unique between different options.
+            uint32_t value;      ///< User defined index. Should be unique between different options.
             std::string label;  ///< Label of the dropdown option.
         };
 
@@ -61,7 +63,7 @@ namespace Falcor
 
         struct RadioButton
         {
-            int32_t buttonID;  ///< User defined index. Should be unique between different options in the same group.
+            uint32_t buttonID;  ///< User defined index. Should be unique between different options in the same group.
             std::string label; ///< Label of the radio button.
             bool sameLine;     ///< Whether the button should appear on the same line as the previous widget/button.
         };
@@ -70,7 +72,11 @@ namespace Falcor
 
         /** Create a new GUI object. Each object is essentially a container for a GUI window
         */
-        static UniquePtr create(uint32_t width, uint32_t height);
+        static UniquePtr create(uint32_t width, uint32_t height, float scaleFactor = 1.0f);
+
+        ~Gui();
+
+        static glm::vec4 pickUniqueColor(const std::string& key);
 
         /** Render the GUI
         */
@@ -87,6 +93,31 @@ namespace Falcor
         /** Handle keyboard events
         */
         bool onKeyboardEvent(const KeyboardEvent& event);
+
+        /** Display image within imgui
+            \param[in] label. Name for id for item.
+            \param[in] pTex. Pointer to texture resource to draw in imgui
+            \param[in] size. Size in pixels of the image to draw. 0 means fit to window
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+        */
+        void addImage(const char label[], const Texture::SharedPtr& pTex, glm::vec2 size = vec2(0), bool maintainRatio = true, bool sameLine = false);
+
+        bool addImageButton(const char label[], const Texture::SharedPtr& pTex, glm::vec2 size, bool maintainRatio = true, bool sameLine = false);
+
+        /** Display rectangle with specified color
+            \param[in] size size in pixels of rectangle
+            \param[in] color Optional. color as an rgba vec4
+            \param[in] filled Optional. If set to true, rectangle will be filled
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+        */
+        void addRect(const glm::vec2& size, const glm::vec4& color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), bool filled = false, bool sameLine = false);
+
+        /** Dummy object especially useful for spacing
+            \param[in] label. Name for id of item
+            \param[in] size. size in pixels of the item.
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+        */
+        void addDummyItem(const char label[], const glm::vec2& size, bool sameLine = false);
 
         /** Static text
             \param[in] text The string to display
@@ -105,7 +136,7 @@ namespace Falcor
             \param[out] activeID If a button was clicked, activeID will be set to the ID of the clicked button.
             \return Whether activeID changed.
         */
-        bool addRadioButtons(const RadioButtonGroup& buttons, int32_t& activeID);
+        bool addRadioButtons(const RadioButtonGroup& buttons, uint32_t& activeID);
 
         /** Begin a collapsible group block
             \param[in] label Display name of the group
@@ -119,46 +150,55 @@ namespace Falcor
         */
         void endGroup();
 
+        /** Begins main menu bar for top of the window
+        */
+        bool beginMainMenuBar();
+
+        /** Begins a collapsable menu in the main menu bar of menu items
+            \param[in] label name of drop down menu to be displayed.
+        */
+        bool beginDropDownMenu(const char label[]);
+
+        /** End the drop down menu list of items.
+        */
+        void endDropDownMenu();
+
+        /** Item to be displayed in dropdown menu for the main menu bar
+            \param[in] label name of item to list in the menu.
+            \param[in] var if the label is selected or not.
+            \return true if the option was selected in the dropdown
+         */
+        bool addMenuItem(const char label[], bool& var);
+
+        /** Item to be displayed in dropdown menu for the main menu bar
+            \param[in] label name of item to list in the menu.
+            \return true if the option was selected in the dropdown
+         */
+        bool addMenuItem(const char label[]);
+
+        /** Ends the main menu bar for top of the window
+        */
+        void endMainMenuBar();
+
         /** Adds a floating-point UI element.
             \param[in] label The name of the widget.
             \param[in] var A reference to a float that will be updated directly when the widget state changes.
             \param[in] minVal Optional. The minimum allowed value for the float.
             \param[in] maxVal Optional. The maximum allowed value for the float.
             \param[in] step Optional. The step rate for the float.
-            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget.
+            \param[in] displayFormat Optional. Formatting string.
             \return true if the value changed, otherwise false
         */
-        bool addFloatVar(const char label[], float& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false);
+        bool addFloatVar(const char label[], float& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat2Var(const char label[], glm::vec2& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat3Var(const char label[], glm::vec3& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat4Var(const char label[], glm::vec4& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false, const char* displayFormat = "%.3f");
 
-        /** Adds a 2-elements floating-point vector UI element.
-            \param[in] label The name of the widget.
-            \param[in] var A reference to a float2 that will be updated directly when the widget state changes.
-            \param[in] minVal Optional. The minimum allowed value for each element of the vector.
-            \param[in] maxVal Optional. The maximum allowed value for each element ofthe vector.
-            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
-            \return true if the value changed, otherwise false
-        */
-        bool addFloat2Var(const char label[], glm::vec2& var, float minVal = -1, float maxVal = 1, bool sameLine = false);
-
-        /** Adds a 3-elements floating-point vector UI element.
-            \param[in] label The name of the widget.
-            \param[in] var A reference to a float3 that will be updated directly when the widget state changes.
-            \param[in] minVal Optional. The minimum allowed value for each element of the vector.
-            \param[in] maxVal Optional. The maximum allowed value for each element of the vector.
-            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
-            \return true if the value changed, otherwise false
-        */
-        bool addFloat3Var(const char label[], glm::vec3& var, float minVal = -1, float maxVal = 1, bool sameLine = false);
-
-        /** Adds a 4-elements floating-point vector UI element.
-            \param[in] label The name of the widget.
-            \param[in] var A reference to a float4 that will be updated directly when the widget state changes.
-            \param[in] minVal Optional. The minimum allowed value for each element of the vector.
-            \param[in] maxVal Optional. The maximum allowed value for each element of the vector.
-            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
-            \return true if the value changed, otherwise false
-        */
-        bool addFloat4Var(const char label[], glm::vec4& var, float minVal = -1, float maxVal = 1, bool sameLine = false);
+        bool addFloatSlider(const char label[], float& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat2Slider(const char label[], glm::vec2& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat3Slider(const char label[], glm::vec3& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, bool sameLine = false, const char* displayFormat = "%.3f");
+        bool addFloat4Slider(const char label[], glm::vec4& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, bool sameLine = false, const char* displayFormat = "%.3f");
 
         /** Adds a checkbox.
             \param[in] label The name of the checkbox.
@@ -167,6 +207,24 @@ namespace Falcor
             \return true if the value changed, otherwise false
         */
         bool addCheckBox(const char label[], bool& pVar, bool sameLine = false);
+
+        /** Adds a checkbox.
+            \param[in] label The name of the checkbox.
+            \param[in] var A reference to an integer that will be updated directly when the checkbox state changes (0 = unchecked, 1 = checked).
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+            \return true if the value changed, otherwise false
+        */
+        bool addCheckBox(const char label[], int& pVar, bool sameLine = false);
+
+        /** Adds a UI widget for multiple checkboxes.
+            \param[in] label The name of the widget.
+            \param[in] var A reference to the bools that will be updated directly when the checkbox state changes (0 = unchecked, 1 = checked).
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+            \return true if the value changed, otherwise false
+        */
+        bool addBool2Var(const char lable[], glm::bvec2& var, bool sameLine = false);
+        bool addBool3Var(const char lable[], glm::bvec3& var, bool sameLine = false);
+        bool addBool4Var(const char lable[], glm::bvec4& var, bool sameLine = false);
 
         /** Adds an RGB color UI widget.
             \param[in] label The name of the widget.
@@ -183,8 +241,23 @@ namespace Falcor
             \return true if the value changed, otherwise false
         */
         bool addRgbaColor(const char label[], glm::vec4& var, bool sameLine = false);
+        
+        /** The source for drag and drop. Call this to allow users to drag out of last gui item.
+            \param[in] label The name of the drag and drop widget
+            \param[in] dataLabel Destination that has same dataLabel can accept the payload
+            \param[in] payloadString Data in payload to be sent and accepted by destination.
+            \return true if user is clicking and dragging
+         */
+        bool dragDropSource(const char label[], const char dataLabel[], const std::string& payloadString);
 
-        /** Adds an integer UI widget.
+        /** Destination area for dropping data in drag and drop of last gui item.
+            \param[in] dataLabel Named label needs to be the same as source datalabel to accept payload.
+            \param[in] payloadString Data sent from the drag and drop source
+            \return true if payload is dropped.
+        */
+        bool dragDropDest(const char dataLabel[], std::string& payloadString);
+
+        /** Adds a UI widget for integers.
             \param[in] label The name of the widget.
             \param[in] var A reference to an integer that will be updated directly when the widget state changes.
             \param[in] minVal Optional. The minimum allowed value for the variable.
@@ -194,6 +267,37 @@ namespace Falcor
             \return true if the value changed, otherwise false
         */
         bool addIntVar(const char label[], int32_t& var, int minVal = -INT32_MAX, int maxVal = INT32_MAX, int step = 1, bool sameLine = false);
+        bool addInt2Var(const char label[], glm::ivec2& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+        bool addInt3Var(const char label[], glm::ivec3& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+        bool addInt4Var(const char label[], glm::ivec4& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+
+        bool addIntSlider(const char label[], int32_t& var, int minVal = -INT32_MAX, int maxVal = INT32_MAX, bool sameLine = false);
+        bool addInt2Slider(const char label[], glm::ivec2& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+        bool addInt3Slider(const char label[], glm::ivec3& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+        bool addInt4Slider(const char label[], glm::ivec4& var, int32_t minVal = -INT32_MAX, int32_t maxVal = INT32_MAX, bool sameLine = false);
+
+        template<typename VectorType>
+        bool addFloatVecVar(const char label[], VectorType& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, float step = 0.001f, bool sameLine = false);
+
+        /** Adds an matrix UI widget.
+            \param[in] label The name of the widget.
+            \param[in] var A reference to the matrix struct that will be updated directly when the widget state changes.
+            \param[in] minVal Optional. The minimum allowed value for the variable.
+            \param[in] maxVal Optional. The maximum allowed value for the variable.
+            \param[in] sameLine Optional. If set to true, the widget will appear on the same line as the previous widget
+            \return true if the value changed, otherwise false
+        */
+        template <typename MatrixType>
+        bool addMatrixVar(const char label[], MatrixType& var, float minVal = -FLT_MAX, float maxVal = FLT_MAX, bool sameLine = false);
+
+        /** Begin a column within the current window
+            \param[in] numColumns requires number of columns within the window.
+         */
+        void beginColumns(uint32_t numColumns);
+
+        /** Proceed to the next column within the window.
+         */
+        void nextColumn();
 
         /** Add a separator
         */
@@ -232,6 +336,11 @@ namespace Falcor
         */
         bool addTextBox(const char label[], std::string& text, uint32_t lineCount = 1);
 
+        /** Adds multiple text boxes for one confirmation button
+         * 
+         */
+        bool addMultiTextBox(const char label[], const std::vector<std::string>& textLabels, std::vector<std::string>& textEntries);
+
         using GraphCallback = float(*)(void*, int32_t index);
 
         /** Adds a graph based on a function
@@ -256,29 +365,66 @@ namespace Falcor
 
         /** Set global font size scaling
         */
-        static void setGlobalFontScaling(float scale);
+        static void setGlobalGuiScaling(float scale);
 
         /** Create a new window on the stack
         */
-        void pushWindow(const char label[], uint32_t width = 0, uint32_t height = 0, uint32_t x = 0, uint32_t y = 0, bool showTitleBar = true);
+        void pushWindow(const char label[], uint32_t width = 0, uint32_t height = 0, uint32_t x = 0, uint32_t y = 0, bool showTitleBar = true, bool allowMove = true, bool focus = true, bool allowClose = true);
 
         /** End a window block
         */
         void popWindow();
 
+        /** Set the current window position in pixels
+            \param[in] x horizontal window position in pixels
+            \param[in] y vertical window position in pixels
+        */
+        void setCurrentWindowPos(uint32_t x, uint32_t y);
+
+        /** Get the position of the current window.
+            \return vec2 Value of window position
+        */
+        glm::vec2 getCurrentWindowPos();
+
+        /**  Set the size of the current window in pixels
+            \param[in] width Window width in pixels
+            \param[in] height Window height in pixels
+        */
+        void setCurrentWindowSize(uint32_t width, uint32_t height);
+
+        /** Get the size of the current window in pixels.
+            \return vec2 Value of window size
+        */
+        glm::vec2 getCurrentWindowSize();
+
+        /** Get if the window with the given label is currently open in the ui
+        */
+        bool isWindowOpen(const char label[]);
+
+        /**
+        */
+        void setWindowOpen(const char label[], bool isOpen);
+
         /** Start a new frame. Must be called at the start of each frame
         */
         void beginFrame();
 
-    protected:
-        bool keyboardCallback(const KeyboardEvent& keyEvent);
-        bool mouseCallback(const MouseEvent& mouseEvent);
-        void windowSizeCallback(uint32_t width, uint32_t height);
+        /** Add a font
+        */
+        void addFont(const std::string& name, const std::string& filename);
+
+        /** Set the active font
+        */
+        void setActiveFont(const std::string& font);
 
     private:
         Gui() = default;
-        void init();
+        void init(float scaleFactor);
         void createVao(uint32_t vertexCount, uint32_t indexCount);
+        void compileFonts();
+
+        // Helper to create multiple inline text boxes
+        bool addCheckboxes(const char label[], bool* pData, uint32_t numCheckboxes, bool sameLine);
 
         struct ComboData
         {
@@ -304,6 +450,13 @@ namespace Falcor
         GraphicsProgram::SharedPtr mpProgram;
         GraphicsState::SharedPtr mpPipelineState;
         uint32_t mGroupStackSize = 0;
-        float mFontScale = 1;
+
+        std::vector<Texture::SharedPtr> mpImages;
+        std::unordered_map<std::string, bool> mOpenWindows;
+        std::vector<uint32_t> mGroupHasWindow;
+        ParameterBlockReflection::BindLocation mGuiImageLoc;
+        float mScaleFactor = 1.0f;
+        std::unordered_map<std::string, ImFont*> mFontMap;
+        ImFont* mpActiveFont = nullptr;
     };
 }

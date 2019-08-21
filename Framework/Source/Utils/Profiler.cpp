@@ -39,56 +39,49 @@ namespace Falcor
 {
     bool gProfileEnabled = false;
 
-    std::map<size_t, Profiler::EventData*> Profiler::sProfilerEvents;
+    std::map<std::string, Profiler::EventData*> Profiler::sProfilerEvents;
     uint32_t Profiler::sCurrentLevel = 0;
     uint32_t Profiler::sGpuTimerIndex = 0;
     std::vector<Profiler::EventData*> Profiler::sProfilerVector;
-    
-    std::hash<std::string> HashedString::hashFunc;
 
-	void Profiler::initNewEvent(EventData *pEvent, const HashedString& name)
+    void Profiler::initNewEvent(EventData *pEvent, const std::string& name)
     {
-	    pEvent->name = name.str;
-        pEvent->level = sCurrentLevel;
-		sProfilerEvents[name.hash] = pEvent;
-        sProfilerVector.push_back(pEvent);
-	}
+        pEvent->name = name;
+        sProfilerEvents[name] = pEvent;
+    }
 
-    Profiler::EventData* Profiler::createNewEvent(const HashedString& name)
+    Profiler::EventData* Profiler::createNewEvent(const std::string& name)
     {
         EventData *pData = new EventData;
-		initNewEvent(pData, name);
+        initNewEvent(pData, name);
         return pData;
     }
 
-    Profiler::EventData* Profiler::isEventRegistered(const HashedString& name)
-	{
-        auto event = sProfilerEvents.find(name.hash);
-        if(event == sProfilerEvents.end())
-		{
-			return nullptr;
-		}
-		else
-		{
-			return event->second;
-		}
-	}
-
-    Profiler::EventData* Profiler::getEvent(const HashedString& name)
+    Profiler::EventData* Profiler::isEventRegistered(const std::string& name)
     {
-        auto event = isEventRegistered(name);
-        if(event)
-		{
-			return event;
-		}
-		else
-        {
-            return createNewEvent(name);
-        }
+        auto event = sProfilerEvents.find(name);
+        return (event == sProfilerEvents.end()) ? nullptr : event->second;
     }
 
-    void Profiler::startEvent(const HashedString& name, EventData* pData)
+    Profiler::EventData* Profiler::getEvent(const std::string& name)
     {
+        auto event = isEventRegistered(name);
+        return event ? event : createNewEvent(name);
+    }
+
+    void Profiler::startEvent(const std::string& name, bool showInMsg)
+    {
+        EventData* pData = getEvent(name);
+        pData->triggered++;
+        if (pData->triggered > 1)
+        {
+            logWarning("Profiler event `" + name + "` was triggered while it is already running. Nesting profiler events with the same name is disallowed and you should probably fix that. Ignoring the new call");
+            return;
+        }
+
+        sProfilerVector.push_back(pData);
+        pData->showInMsg = showInMsg;
+        pData->level = sCurrentLevel;
         pData->cpuStart = CpuTimer::getCurrentTimePoint();
         EventData::FrameData& frame = pData->frameData[sGpuTimerIndex];
         if (frame.currentTimer >= frame.pTimers.size())
@@ -101,8 +94,12 @@ namespace Falcor
         sCurrentLevel++;
     }
 
-	void Profiler::endEvent(const HashedString& name, EventData* pData)
+    void Profiler::endEvent(const std::string& name)
     {
+        EventData* pData = getEvent(name);
+        pData->triggered--;
+        if (pData->triggered != 0) return;
+
         pData->cpuEnd = CpuTimer::getCurrentTimePoint();
         pData->cpuTotal += CpuTimer::calcDuration(pData->cpuStart, pData->cpuEnd);
 
@@ -112,67 +109,102 @@ namespace Falcor
         sCurrentLevel--;
     }
 
-    void Profiler::endFrame(std::string& profileResults)
+    double Profiler::getEventGpuTime(const std::string& name)
     {
-        profileResults = "Name\t\t\tCPU time(ms)\t\t\tGPU time(ms)\n";
+        const auto& pEvent = getEvent(name);
+        return pEvent ? getGpuTime(pEvent) : 0;
+    }
 
-		for (EventData* pData : sProfilerVector)
-		{
-            double gpuTime = 0;
-            for(size_t i = 0 ; i < pData->frameData[1 - sGpuTimerIndex].currentTimer ; i++)
-            {
-                gpuTime += pData->frameData[1 - sGpuTimerIndex].pTimers[i]->getElapsedTime();
-            }
+    double Profiler::getEventCpuTime(const std::string& name)
+    {
+        const auto& pEvent = getEvent(name);
+        return pEvent ? getCpuTime(pEvent) : 0;
+    }
 
-            pData->frameData[1 - sGpuTimerIndex].currentTimer = 0;
+    double Profiler::getGpuTime(const EventData* pData)
+    {
+        double gpuTime = 0;
+        for (size_t i = 0; i < pData->frameData[1 - sGpuTimerIndex].currentTimer; i++)
+        {
+            gpuTime += pData->frameData[1 - sGpuTimerIndex].pTimers[i]->getElapsedTime();
+        }
+        return gpuTime;
+    }
+
+    double Profiler::getCpuTime(const EventData* pData)
+    {
+        return pData->cpuTotal;
+    }
+
+    std::string Profiler::getEventsString()
+    {
+        std::string results("Name\t\t\t\t\tCPU time(ms)\tGPU time(ms)\n");
+
+        for (EventData* pData : sProfilerVector)
+        {
+            assert(pData->triggered == 0);
+            if(pData->showInMsg == false) continue;
+
+            double gpuTime = getGpuTime(pData);
             assert(pData->callStack.empty());
 
-			char event[1000];
-			uint32_t nameIndent = pData->level * 2 + 1;
-			uint32_t cpuIndent = 32 - (nameIndent + (uint32_t)pData->name.size());
-			std::snprintf(event, 1000, "%*s%s %*.3f %36.3f\n", nameIndent, " ", pData->name.c_str(), cpuIndent, pData->cpuTotal, gpuTime);
+            char event[1000];
+            uint32_t nameIndent = pData->level * 2 + 1;
+            uint32_t cpuIndent = 30 - (nameIndent + (uint32_t)pData->name.size());
+            snprintf(event, 1000, "%*s%s %*.2f %14.2f\n", nameIndent, " ", pData->name.c_str(), cpuIndent, getCpuTime(pData), gpuTime);
 #if _PROFILING_LOG == 1
-			pData->cpuMs[pData->stepNr] = pData->cpuTotal;
-			pData->gpuMs[pData->stepNr] = gpuTime;
-			pData->stepNr++;
-			if (pData->stepNr == _PROFILING_LOG_BATCH_SIZE)
-			{
-				std::ostringstream logOss, fileOss;
-				logOss << "dumping " << "profile_" << pData->name << "_" << pData->filesWritten;
-				Logger::log(Logger::Level::Info, logOss.str());
-				fileOss << "profile_" << pData->name << "_" << pData->filesWritten++;
-				std::ofstream out(fileOss.str().c_str());
-				for (int i = 0; i < _PROFILING_LOG_BATCH_SIZE; ++i)
-				{
-				 	out << pData->cpuMs[i] << " " << pData->gpuMs[i] << "\n";
-				}
-				pData->stepNr = 0;
-			}
+            pData->cpuMs[pData->stepNr] = pData->cpuTotal;
+            pData->gpuMs[pData->stepNr] = (float)gpuTime;
+            pData->stepNr++;
+            if (pData->stepNr == _PROFILING_LOG_BATCH_SIZE)
+            {
+                std::ostringstream logOss, fileOss;
+                logOss << "dumping " << "profile_" << pData->name << "_" << pData->filesWritten;
+                logInfo(logOss.str());
+                fileOss << "profile_" << pData->name << "_" << pData->filesWritten++;
+                std::ofstream out(fileOss.str().c_str());
+                for (int i = 0; i < _PROFILING_LOG_BATCH_SIZE; ++i)
+                {
+                    out << pData->cpuMs[i] << " " << pData->gpuMs[i] << "\n";
+                }
+                pData->stepNr = 0;
+            }
 #endif
-            pData->cpuTotal = 0;
-			pData->gpuTotal = 0;
-            profileResults += event;
+            results += event;
         }
 
+        return results;
+    }
+
+    void Profiler::endFrame()
+    {
+        for (EventData* pData : sProfilerVector)
+        {
+            pData->showInMsg = false;
+            pData->cpuTotal = 0;
+            pData->triggered = 0; 
+            pData->frameData[1 - sGpuTimerIndex].currentTimer = 0;
+        }
+        sProfilerVector.clear();
         sGpuTimerIndex = 1 - sGpuTimerIndex;
     }
 
 #if _PROFILING_LOG == 1
-	void Profiler::flushLog() {
-		for (EventData* pData : sProfilerVector)
-		{
-				std::ostringstream logOss, fileOss;
-				logOss << "dumping " << "profile_" << pData->name << "_" << pData->filesWritten;
-				Logger::log(Logger::Level::Info, logOss.str());
-				fileOss << "profile_" << pData->name << "_" << pData->filesWritten++;
-				std::ofstream out(fileOss.str().c_str());
-				for (int i = 0; i < pData->stepNr; ++i)
-				{
-					out << pData->cpuMs[i] << " " << pData->gpuMs[i] << "\n";
-				}
-				pData->stepNr = 0;
-			}
-	}
+    void Profiler::flushLog() {
+        for (EventData* pData : sProfilerVector)
+        {
+            std::ostringstream logOss, fileOss;
+            logOss << "dumping " << "profile_" << pData->name << "_" << pData->filesWritten;
+            logInfo(logOss.str());
+            fileOss << "profile_" << pData->name << "_" << pData->filesWritten++;
+            std::ofstream out(fileOss.str().c_str());
+            for (int i = 0; i < pData->stepNr; ++i)
+            {
+                out << pData->cpuMs[i] << " " << pData->gpuMs[i] << "\n";
+            }
+            pData->stepNr = 0;
+        }
+    }
 #endif
 
     void Profiler::clearEvents()

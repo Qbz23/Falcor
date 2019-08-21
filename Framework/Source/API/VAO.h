@@ -76,7 +76,7 @@ namespace Falcor
 
         /** Get the API handle
         */
-        VaoHandle getApiHandle() const;
+        const VaoHandle& getApiHandle() const;
 
         /** Get the vertex buffer count
         */

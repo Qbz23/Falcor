@@ -1,5 +1,5 @@
 /***************************************************************************
-# Copyright (c) 2015, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -27,16 +27,13 @@
 ***************************************************************************/
 #pragma once
 #define NOMINMAX
+
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include "API/Formats.h"
 #include <comdef.h>
 #include <dxgi1_4.h>
 #include <dxgiformat.h>
-
-#ifndef FALCOR_D3D
-#define FALCOR_D3D
-#endif
 
 #define MAKE_SMART_COM_PTR(_a) _COM_SMARTPTR_TYPEDEF(_a, __uuidof(_a))
 
@@ -47,6 +44,8 @@ __forceinline BOOL dxBool(bool b) { return b ? TRUE : FALSE; }
 #else
 #define d3d_call(a) a
 #endif
+
+#define GET_COM_INTERFACE(base, type, var) MAKE_SMART_COM_PTR(type); concat_strings(type, Ptr) var; d3d_call(base->QueryInterface(IID_PPV_ARGS(&var)));
 
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -96,6 +95,25 @@ namespace Falcor
         }
     }
 
+#define to_string_case(a) case a: return #a;
+    inline std::string to_string(D3D_FEATURE_LEVEL featureLevel)
+    {
+        switch (featureLevel)
+        {
+            to_string_case(D3D_FEATURE_LEVEL_9_1)
+            to_string_case(D3D_FEATURE_LEVEL_9_2)
+            to_string_case(D3D_FEATURE_LEVEL_9_3)
+            to_string_case(D3D_FEATURE_LEVEL_10_0)
+            to_string_case(D3D_FEATURE_LEVEL_10_1)
+            to_string_case(D3D_FEATURE_LEVEL_11_0)
+            to_string_case(D3D_FEATURE_LEVEL_11_1)
+            to_string_case(D3D_FEATURE_LEVEL_12_0)
+            to_string_case(D3D_FEATURE_LEVEL_12_1)
+        default: should_not_get_here(); return "";
+        }
+    }
+#undef to_string_case
+
     /** Get D3D_FEATURE_LEVEL
     */
     D3D_FEATURE_LEVEL getD3DFeatureLevel(uint32_t majorVersion, uint32_t minorVersion);
@@ -103,14 +121,6 @@ namespace Falcor
     /** Log a message if hr indicates an error
     */
     void d3dTraceHR(const std::string& Msg, HRESULT hr);
-
-    // DXGI
-    MAKE_SMART_COM_PTR(IDXGISwapChain3);
-    MAKE_SMART_COM_PTR(IDXGIDevice);
-    MAKE_SMART_COM_PTR(IDXGIAdapter1);
-    MAKE_SMART_COM_PTR(IDXGIFactory4);
-    MAKE_SMART_COM_PTR(ID3DBlob);
-    /*! @} */
 
     template<typename BlobType>
     inline std::string convertBlobToString(BlobType* pBlob)
@@ -121,17 +131,71 @@ namespace Falcor
         return std::string(infoLog.data());
     }
 
-    // Device
+    enum class RtBuildFlags
+    {
+        None = 0,
+        AllowUpdate = 0x1,
+        AllowCompaction = 0x2,
+        FastTrace = 0x4,
+        FastBuild = 0x8,
+        MinimizeMemory = 0x10,
+        PerformUpdate = 0x20,
+    };
+    enum_class_operators(RtBuildFlags);
+
+#define rt_flags(a) case RtBuildFlags::a: return #a
+    inline std::string to_string(RtBuildFlags flags)
+    {
+        switch (flags)
+        {
+            rt_flags(None);
+            rt_flags(AllowUpdate);
+            rt_flags(AllowCompaction);
+            rt_flags(FastTrace);
+            rt_flags(FastBuild);
+            rt_flags(MinimizeMemory);
+            rt_flags(PerformUpdate);
+        default:
+            should_not_get_here();
+            return "";
+        }
+    }
+#undef rt_flags
+
+    inline D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS getDxrBuildFlags(RtBuildFlags buildFlags)
+    {
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS dxr = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+
+        if (is_set(buildFlags, RtBuildFlags::AllowUpdate)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+        if (is_set(buildFlags, RtBuildFlags::AllowCompaction)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_COMPACTION;
+        if (is_set(buildFlags, RtBuildFlags::FastTrace)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+        if (is_set(buildFlags, RtBuildFlags::FastBuild)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+        if (is_set(buildFlags, RtBuildFlags::MinimizeMemory)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_MINIMIZE_MEMORY;
+        if (is_set(buildFlags, RtBuildFlags::PerformUpdate)) dxr |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+
+        return dxr;
+    }
+
+    // The max scalars supported by our driver
+    #define FALCOR_RT_MAX_PAYLOAD_SIZE_IN_BYTES (14 * sizeof(float))
+
+    // DXGI
+    MAKE_SMART_COM_PTR(IDXGISwapChain3);
+    MAKE_SMART_COM_PTR(IDXGIDevice);
+    MAKE_SMART_COM_PTR(IDXGIAdapter1);
+    MAKE_SMART_COM_PTR(IDXGIFactory4);
+    MAKE_SMART_COM_PTR(ID3DBlob);
+
+    MAKE_SMART_COM_PTR(ID3D12StateObject);
     MAKE_SMART_COM_PTR(ID3D12Device);
+    MAKE_SMART_COM_PTR(ID3D12GraphicsCommandList);
     MAKE_SMART_COM_PTR(ID3D12Debug);
     MAKE_SMART_COM_PTR(ID3D12CommandQueue);
     MAKE_SMART_COM_PTR(ID3D12CommandAllocator);
-    MAKE_SMART_COM_PTR(ID3D12GraphicsCommandList);
     MAKE_SMART_COM_PTR(ID3D12DescriptorHeap);
     MAKE_SMART_COM_PTR(ID3D12Resource);
     MAKE_SMART_COM_PTR(ID3D12Fence);
     MAKE_SMART_COM_PTR(ID3D12PipelineState);
-    MAKE_SMART_COM_PTR(ID3D12ShaderReflection);
     MAKE_SMART_COM_PTR(ID3D12RootSignature);
     MAKE_SMART_COM_PTR(ID3D12QueryHeap);
     MAKE_SMART_COM_PTR(ID3D12CommandSignature);
@@ -144,10 +208,10 @@ namespace Falcor
 
     class DescriptorHeapEntry;
 
-	using WindowHandle = HWND;
-	using DeviceHandle = ID3D12DevicePtr;
-	using CommandListHandle = ID3D12GraphicsCommandListPtr;
-	using CommandQueueHandle = ID3D12CommandQueuePtr;
+    using WindowHandle = HWND;
+    using DeviceHandle = ID3D12DevicePtr;
+    using CommandListHandle = ID3D12GraphicsCommandListPtr;
+    using CommandQueueHandle = ID3D12CommandQueuePtr;
     using ApiCommandQueueType = D3D12_COMMAND_LIST_TYPE;
     using CommandAllocatorHandle = ID3D12CommandAllocatorPtr;
     using CommandSignatureHandle = ID3D12CommandSignaturePtr;
@@ -186,11 +250,7 @@ namespace Falcor
 
     inline constexpr uint32_t getMaxViewportCount() { return D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; }
 
-#define appendShaderExtension(_a)  _a ".hlsl"
     /*! @} */
 }
-
-#define DEFAULT_API_MAJOR_VERSION 11
-#define DEFAULT_API_MINOR_VERSION 1
 
 #define UNSUPPORTED_IN_D3D12(msg_) {Falcor::logWarning(msg_ + std::string(" is not supported in D3D12. Ignoring call."));}

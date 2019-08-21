@@ -26,6 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "Framework.h"
+#include "API/Device.h"
 
 namespace Falcor
 {
@@ -85,8 +86,8 @@ namespace Falcor
         { ResourceFormat::RGBA32Uint,                    VK_FORMAT_R32G32B32A32_UINT },
         { ResourceFormat::BGRA8Unorm,                    VK_FORMAT_B8G8R8A8_UNORM },
         { ResourceFormat::BGRA8UnormSrgb,                VK_FORMAT_B8G8R8A8_SRGB },
-        { ResourceFormat::BGRX8Unorm,                    VK_FORMAT_UNDEFINED },
-        { ResourceFormat::BGRX8UnormSrgb,                VK_FORMAT_UNDEFINED },
+        { ResourceFormat::BGRX8Unorm,                    VK_FORMAT_B8G8R8A8_UNORM },
+        { ResourceFormat::BGRX8UnormSrgb,                VK_FORMAT_B8G8R8A8_SRGB },
         { ResourceFormat::Alpha8Unorm,                   VK_FORMAT_UNDEFINED },
         { ResourceFormat::Alpha32Float,                  VK_FORMAT_UNDEFINED },
         { ResourceFormat::R5G6B5Unorm,                   VK_FORMAT_R5G6B5_UNORM_PACK16 },
@@ -109,4 +110,43 @@ namespace Falcor
         { ResourceFormat::BC7Unorm,                      VK_FORMAT_BC7_UNORM_BLOCK },
         { ResourceFormat::BC7UnormSrgb,                  VK_FORMAT_BC7_SRGB_BLOCK },
     };
+
+    ResourceBindFlags getFormatBindFlags(ResourceFormat format)
+    {
+        VkFormatProperties p;
+        vkGetPhysicalDeviceFormatProperties(gpDevice->getApiHandle(), getVkFormat(format), &p);
+
+        auto convertFlags = [](VkFormatFeatureFlags vk) -> ResourceBindFlags
+        {
+            ResourceBindFlags f = ResourceBindFlags::None;
+            if (vk & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) f |= ResourceBindFlags::ShaderResource;
+            if (vk & VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) f |= ResourceBindFlags::ShaderResource;
+            if (vk & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) f |= ResourceBindFlags::ShaderResource;
+            if (vk & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) f |= ResourceBindFlags::UnorderedAccess;
+            if (vk & VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT) f |= ResourceBindFlags::UnorderedAccess;
+            if (vk & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) f |= ResourceBindFlags::UnorderedAccess;
+            if (vk & VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) f |= ResourceBindFlags::UnorderedAccess;
+            if (vk & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) f |= ResourceBindFlags::Vertex;
+            if (vk & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) f |= ResourceBindFlags::RenderTarget;
+            if (vk & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) f |= ResourceBindFlags::RenderTarget;
+            if (vk & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) f |= ResourceBindFlags::DepthStencil;
+
+            return f;
+        };
+        
+        ResourceBindFlags flags = ResourceBindFlags::None;
+        flags |= convertFlags(p.bufferFeatures);
+        flags |= convertFlags(p.linearTilingFeatures);
+        flags |= convertFlags(p.optimalTilingFeatures);
+
+
+        switch (format)
+        {
+        case ResourceFormat::R16Uint:
+        case ResourceFormat::R32Uint:
+            flags |= ResourceBindFlags::Index;
+        }
+
+        return flags;
+    }
 }

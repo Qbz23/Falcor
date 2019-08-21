@@ -31,21 +31,23 @@
 #include <map>
 #include "Graphics/Model/Model.h"
 #include "Graphics/Light.h"
-#include "Graphics/Material/Material.h"
+#include "Graphics/LightProbe.h"
 #include "Graphics/Camera/Camera.h"
 #include "Graphics/Camera/CameraController.h"
 #include "Graphics/Paths/ObjectPath.h"
 #include "Graphics/Model/ObjectInstance.h"
-#include "Graphics/Material/MaterialHistory.h"
+#include "Graphics/Model/SkinningCache.h"
 
 namespace Falcor
 {
+    class Gui;
+
     class Scene : public std::enable_shared_from_this<Scene>
     {
     public:
         using SharedPtr = std::shared_ptr<Scene>;
         using SharedConstPtr = std::shared_ptr<const Scene>;
-        static const char* kFileFormatString;
+        static const FileDialogFilterVec kFileExtensionFilters;
 
         struct UserVariable
         {
@@ -82,11 +84,12 @@ namespace Falcor
             std::vector<float> vector;
 
             UserVariable() { }
-            UserVariable(const int32_t      v) : i32(v),            type(Type::Int)       { }
-            UserVariable(const float        v) : d64((double)v),    type(Type::Double)    { }
-            UserVariable(const glm::vec2&   v) : vec2(v),           type(Type::Vec2)      { }
-            UserVariable(const glm::vec3&   v) : vec3(v),           type(Type::Vec3)      { }
-            UserVariable(const std::string& s) : str(s),            type(Type::String)    { }
+            UserVariable(const uint32_t&     v) : u32(v), type(Type::Uint) { }
+            UserVariable(const int32_t&     v) : i32(v), type(Type::Int) { }
+            UserVariable(const float&       v) : d64((double)v), type(Type::Double) { }
+            UserVariable(const glm::vec2&   v) : vec2(v), type(Type::Vec2) { }
+            UserVariable(const glm::vec3&   v) : vec3(v), type(Type::Vec3) { }
+            UserVariable(const std::string& s) : str(s), type(Type::String) { }
         };
 
         using ModelInstance = ObjectInstance<Model>;
@@ -95,15 +98,14 @@ namespace Falcor
         /**
             Enum to generate light source(s)
         */
-		enum class LoadFlags
+        enum class LoadFlags
         {
-			None                =   0x0,
-			GenerateAreaLights  =   0x1,    ///< Create area light(s) for meshes that have emissive material
-            StoreMaterialHistory =  0x2     ///< Store history of overridden mesh materials
+            None = 0x0,
+            GenerateAreaLights = 0x1,    ///< Create area light(s) for meshes that have emissive material
         };
 
         static Scene::SharedPtr loadFromFile(const std::string& filename, Model::LoadFlags modelLoadFlags = Model::LoadFlags::None, Scene::LoadFlags sceneLoadFlags = LoadFlags::None);
-        static Scene::SharedPtr create();
+        static Scene::SharedPtr create(const std::string& filename = "");
 
         virtual ~Scene();
 
@@ -113,7 +115,7 @@ namespace Falcor
         void deleteModel(uint32_t modelID);
         void deleteAllModels();
 
-        // Model instances
+        // Model Instances
         virtual void addModelInstance(const ModelInstance::SharedPtr& pInstance);
         void addModelInstance(const Model::SharedPtr& pModel, const std::string& instanceName, const glm::vec3& translation = glm::vec3(), const glm::vec3& yawPitchRoll = glm::vec3(), const glm::vec3& scaling = glm::vec3(1));
         // Adds a model instance and shares ownership of it
@@ -121,34 +123,36 @@ namespace Falcor
         const ModelInstance::SharedPtr& getModelInstance(uint32_t modelID, uint32_t instanceID) const { return mModels[modelID][instanceID]; };
         void deleteModelInstance(uint32_t modelID, uint32_t instanceID);
 
-        // Light sources
+        // Light Sources
         uint32_t addLight(const Light::SharedPtr& pLight);
         void deleteLight(uint32_t lightID);
         uint32_t getLightCount() const { return (uint32_t)mpLights.size(); }
         const Light::SharedPtr& getLight(uint32_t index) const { return mpLights[index]; }
         const std::vector<Light::SharedPtr>& getLights() const { return mpLights; }
 
-        void setAmbientIntensity(const glm::vec3& ambientIntensity) { mAmbientIntensity = ambientIntensity; }
-        const glm::vec3& getAmbientIntensity() const { return mAmbientIntensity; };
+        // Light Probes
+        uint32_t addLightProbe(const LightProbe::SharedPtr& pLightProbe);
+        void deleteLightProbe(uint32_t lightID);
+        uint32_t getLightProbeCount() const { return (uint32_t)mpLightProbes.size(); }
+        const LightProbe::SharedPtr& getLightProbe(uint32_t index) const { return mpLightProbes[index]; }
+        const std::vector<LightProbe::SharedPtr>& getLightProbes() const { return mpLightProbes; }
+
+        // Area Lights
+        uint32_t addAreaLight(const AreaLight::SharedPtr& pAreaLight);
+        void deleteAreaLight(uint32_t lightID);
+        uint32_t getAreaLightCount() const { return (uint32_t)mpAreaLights.size(); }
+        const AreaLight::SharedPtr& getAreaLight(uint32_t index) const { return mpAreaLights[index]; }
+        const std::vector<AreaLight::SharedPtr>& getAreaLights() const { return mpAreaLights; }
 
         float getLightingScale() const { return mLightingScale; }
         void setLightingScale(float lightingScale) { mLightingScale = lightingScale; }
 
-        // Materials
-        void addMaterial(Material::SharedPtr pMaterial) { mpMaterials.push_back(pMaterial); }
-        void deleteMaterial(uint32_t materialID);
-        uint32_t getMaterialCount() const { return (uint32_t)mpMaterials.size(); }
-        const Material::SharedPtr& getMaterial(uint32_t index) const { return mpMaterials[index]; }
-
-        const MaterialHistory::SharedPtr& getMaterialHistory() { return mpMaterialHistory; }
-        void deleteMaterialHistory();
-
-        // Object paths
+        // Object Paths
         uint32_t addPath(const ObjectPath::SharedPtr& pPath);
         void deletePath(uint32_t pathID);
-        
+
         const ObjectPath::SharedPtr& getPath(uint32_t pathID) const { return mpPaths[pathID]; }
-        uint32_t getPathCount() const { return (uint32_t)mpPaths.size();}
+        uint32_t getPathCount() const { return (uint32_t)mpPaths.size(); }
 
         // Camera
         uint32_t addCamera(const Camera::SharedPtr& pCamera);
@@ -170,7 +174,7 @@ namespace Falcor
         uint32_t getVersion() const { return mVersion; }
         void setVersion(uint32_t version) { mVersion = version; }
         void addUserVariable(const std::string& name, const UserVariable& var) { mUserVars[name] = var; }
-        
+
         // If the name is not found, returns an invalid var (Type == Unknown)
         const UserVariable& getUserVariable(const std::string& name) const;
         const UserVariable& getUserVariable(uint32_t varID, std::string& varName) const;
@@ -182,11 +186,26 @@ namespace Falcor
 
         void merge(const Scene* pFrom);
 
+        /** Set scene unit.
+            \param[in] sceneUnit Size of scene unit in meters.
+        */
+        void setSceneUnit(float sceneUnit) { mSceneUnit = sceneUnit; }
+
+        /** Get scene unit.
+            \return Size of scene unit in meters.
+        */
+        float getSceneUnit() const { return mSceneUnit; }
+
         /**
-            Return scene extents
+            Return scene extents in scene units
         */
         const vec3& getCenter() { updateExtents(); return mCenter; }
         const float getRadius() { updateExtents(); return mRadius; }
+
+        /** Returns the scene bounding box.
+            \return Bounding box in scene units.
+        */
+        const BoundingBox& getBoundingBox() { updateExtents(); return mBoundingBox; }
 
         /**
             This routine creates area light(s) in the scene. All meshes that
@@ -194,48 +213,67 @@ namespace Falcor
         */
         void createAreaLights();
 
-        /**
-            This routine deletes area light(s) from the scene.
+        /** Bind a sampler to all the materials in the scene
         */
-        void deleteAreaLights();
+        void bindSampler(Sampler::SharedPtr pSampler);
 
-        /** Bind a sampler to all the scene's global materials
+        /** Attach skinning cache to all models in scene.
         */
-        void bindSamplerToMaterials(Sampler::SharedPtr pSampler);
+        void attachSkinningCacheToModels(SkinningCache::SharedPtr pSkinningCache);
 
-        /** Bind a sampler to all the models
+        /** Set an environment-map texture
         */
-        void bindSamplerToModels(Sampler::SharedPtr pSampler);
+        void setEnvironmentMap(const Texture::SharedPtr& pMap) { mpEnvMap = pMap; }
+
+        /** Get the env-map texture
+        */
+        const Texture::SharedPtr& getEnvironmentMap() const { return mpEnvMap; }
+
+        /** Get the filename
+        */
+        const std::string& getFilename() const { return mFilename; }
+        
+        /** Set a new aspect ratio for all the cameras in the scene
+        */
+        void setCamerasAspectRatio(float ratio);
+
+        /** Render the scene's UI
+        */
+        void renderUI(Gui* pGui, const char* uiGroup = nullptr);
     protected:
 
-        Scene();
+        Scene(const std::string& filename = "");
         /**
             Update changed scene extents (radius and center).
         */
         void updateExtents();
-        
+
         static uint32_t sSceneCounter;
 
         uint32_t mId;
 
         std::vector<ModelInstanceList> mModels;
         std::vector<Light::SharedPtr> mpLights;
-        std::vector<Material::SharedPtr> mpMaterials;
         std::vector<Camera::SharedPtr> mCameras;
         std::vector<ObjectPath::SharedPtr> mpPaths;
+        std::vector<LightProbe::SharedPtr> mpLightProbes;
+        std::vector<AreaLight::SharedPtr> mpAreaLights;
+        Texture::SharedPtr mpEnvMap;
 
-        MaterialHistory::SharedPtr mpMaterialHistory;
-
-        vec3 mAmbientIntensity;
         uint32_t mActiveCameraID = 0;
+        uint32_t mSelectedPath = 0;
         float mCameraSpeed = 1;
         float mLightingScale = 1.0f;
         uint32_t mVersion = 1;
+        float mSceneUnit = 1.0f;            ///< Scene unit in meters (default 1 unit = 1 m)
 
         float mRadius = -1.f;
         vec3 mCenter = vec3(0, 0, 0);
+        BoundingBox mBoundingBox;           ///< Scene bounding box in scene units.
 
         bool mExtentsDirty = true;
+
+        std::string mFilename;
 
         using string_uservar_map = std::map<const std::string, UserVariable>;
         string_uservar_map mUserVars;
@@ -243,4 +281,18 @@ namespace Falcor
     };
 
     enum_class_operators(Scene::LoadFlags);
+
+#define flag_str(a) case Scene::LoadFlags::a: return #a
+    inline std::string to_string(Scene::LoadFlags f)
+    {
+        switch (f)
+        {
+            flag_str(None);
+            flag_str(GenerateAreaLights);
+        default:
+            should_not_get_here();
+            return "";
+        }
+    }
+#undef flag_str
 }

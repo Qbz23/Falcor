@@ -27,18 +27,17 @@
 ***************************************************************************/
 #pragma once
 #include "Falcor.h"
-#include "SampleTest.h"
 
 using namespace Falcor;
 
-class MultiPassPostProcess : public SampleTest
+class MultiPassPostProcess : public Renderer
 {
 public:
-    void onLoad() override;
-    void onFrameRender() override;
-    void onShutdown() override;
-    bool onKeyEvent(const KeyboardEvent& keyEvent) override;
-    void onGuiRender() override;
+    void onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext) override;
+    void onFrameRender(SampleCallbacks* pSample, RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo) override;
+    void onShutdown(SampleCallbacks* pSample) override;
+    bool onKeyEvent(SampleCallbacks* pSample, const KeyboardEvent& keyEvent) override;
+    void onGuiRender(SampleCallbacks* pSample, Gui* pGui) override;
 private:
     Texture::SharedPtr mpImage;
     Fbo::SharedPtr mpTempFB;
@@ -50,9 +49,6 @@ private:
 
     bool mEnableGaussianBlur = false;
     bool mEnableGrayscale = false;
-    void loadImage();
-    void loadImageFromFile(std::string filename);
-    
-    //testing 
-    void onInitializeTesting() override;
+    void loadImage(SampleCallbacks* pSample);
+    void loadImageFromFile(SampleCallbacks* pSample, std::string filename);
 };

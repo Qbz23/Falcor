@@ -45,6 +45,16 @@ namespace Falcor
     class ReflectionType : public std::enable_shared_from_this<ReflectionType>
     {
     public:
+        /** The type of the underlying type. When adding new derived classes, we'll need to update this enum
+        */
+        enum class Type
+        {
+            Array,      ///< ReflectionArrayType
+            Struct,     ///< ReflectionStructType
+            Basic,      ///< ReflectionBasicType
+            Resource,   ///< ReflectionResourceType
+        };
+
         using SharedPtr = std::shared_ptr<ReflectionType>;
         using SharedConstPtr = std::shared_ptr<const ReflectionType>;
         static const uint32_t kInvalidOffset = -1;
@@ -85,11 +95,13 @@ namespace Falcor
         // Helper functions
         virtual std::shared_ptr<const ReflectionVar> findMemberInternal(const std::string& name, size_t strPos, size_t offset, uint32_t regIndex, uint32_t regSpace, uint32_t descOffset) const = 0;
 
+        Type getType() const { return mType; }
         virtual bool operator==(const ReflectionType& other) const = 0;
         virtual bool operator!=(const ReflectionType& other) const { return !(*this == other); }
     protected:
-        ReflectionType(size_t offset) : mOffset(offset) {}
+        ReflectionType(size_t offset, Type type) : mType(type), mOffset(offset) {}
         size_t mOffset;
+        Type mType;
     };
 
     /** Reflection object for array-types
@@ -156,7 +168,7 @@ namespace Falcor
 
         /** Get member by name
         */
-        const std::shared_ptr<const ReflectionVar>& getMember(const std::string& name) const { return getMember(getMemberIndex(name)); }
+        const std::shared_ptr<const ReflectionVar>& getMember(const std::string& name) const;
 
         /** Get member by index
         */
@@ -353,7 +365,7 @@ namespace Falcor
         
         /** Create a new object
         */
-        static SharedPtr create(Type type, Dimensions dims, StructuredType structuredType, ReturnType retType, ShaderAccess shaderAccess);
+        static SharedPtr create(Type type, Dimensions dims, StructuredType structuredType = StructuredType::Invalid, ReturnType retType = ReturnType::Unknown, ShaderAccess shaderAccess = ShaderAccess::Undefined);
 
         /** For structured- and constant-buffers, set a reflection-type describing the buffer's layout
         */
@@ -416,14 +428,21 @@ namespace Falcor
         using SharedConstPtr = std::shared_ptr<const ReflectionVar>;
         static const uint32_t kInvalidOffset = ReflectionType::kInvalidOffset;
 
+        enum class Modifier
+        {
+            None        = 0x0,    ///< No modifier
+            Shared      = 0x1,  ///< Shared resource
+        };
+
         /** Create a new object
             \param[in] name The name of the variable
             \param[in] pType The type of the variable
             \param[in] offset The offset of the variable relative to the parent object
             \param[in] descOffset In case of a resource, the offset in descriptors relative to the base descriptor-set
             \param[in] regSpace In case of a resource, the register space
+            \param[in] isShared For resources, tells us if the 
         */
-        static SharedPtr create(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset = 0, uint32_t regSpace = kInvalidOffset);
+        static SharedPtr create(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset = 0, uint32_t regSpace = kInvalidOffset, Modifier modifier = Modifier::None);
 
         /** Get the variable name
         */
@@ -431,7 +450,7 @@ namespace Falcor
 
         /** Get the variable type
         */
-        const ReflectionType::SharedConstPtr getType() const { return mpType; }
+        const ReflectionType::SharedConstPtr& getType() const { return mpType; }
 
         /** Get the variable offset
         */
@@ -449,17 +468,24 @@ namespace Falcor
         */
         uint32_t getDescOffset() const { return mDescOffset; }
 
+        /** Get the modifier
+        */
+        Modifier getModifier() const { return mModifier; }
+
         bool operator==(const ReflectionVar& other) const;
         bool operator!=(const ReflectionVar& other) const { return !(*this == other); }
     private:
-        ReflectionVar(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace);
+        ReflectionVar(const std::string& name, const ReflectionType::SharedConstPtr& pType, size_t offset, uint32_t descOffset, uint32_t regSpace, Modifier modifier);
         ReflectionType::SharedConstPtr mpType;
         size_t mOffset = kInvalidOffset;
         uint32_t mRegSpace = kInvalidOffset;
         std::string mName;
         size_t mSize = 0;
         uint32_t mDescOffset = 0;
+        Modifier mModifier;
     };
+
+    enum_class_operators(ReflectionVar::Modifier);
 
     class ProgramReflection;
 
@@ -526,11 +552,19 @@ namespace Falcor
         /** Get a vector with the required descriptor-set layouts for the block. Useful when creating root-signatures
         */
         const SetLayoutVec& getDescriptorSetLayouts() const { return mSetLayouts; }
+
+        bool operator==(const ParameterBlockReflection& other) const { return *mpResourceVars == *other.mpResourceVars; }
+        bool operator!=(const ParameterBlockReflection& other) const { return !(*this == other); }
+
+        /** Merge to reflection objects into a new one
+        */
+        static SharedPtr merge(const ParameterBlockReflection& first, const ParameterBlockReflection& second);
     private:
         friend class ProgramReflection;
         void addResource(const ReflectionVar::SharedConstPtr& pVar);
         void finalize();
         ParameterBlockReflection(const std::string& name);
+        ParameterBlockReflection(const ParameterBlockReflection&) = default;
         ResourceVec mResources;
         ReflectionStructType::SharedPtr mpResourceVars;
         std::string mName;
@@ -539,7 +573,7 @@ namespace Falcor
         SetLayoutVec mSetLayouts;
     };
 
-    /** Reflection object for an entire program. Essentialy, it's a collection of ParameterBlocks
+    /** Reflection object for an entire program. Essentially, it's a collection of ParameterBlocks
     */
     class ProgramReflection
     {
@@ -559,9 +593,17 @@ namespace Falcor
         using VariableMap = std::unordered_map<std::string, ShaderVariable>;
         using BindLocation = ParameterBlockReflection::BindLocation;
 
+        enum class ResourceScope : uint32_t
+        {
+            Local = 0x1,
+            Global = 0x2,
+
+            All = 0xFFFFFFFF
+        };
+
         /** Create a new object for a Slang reflector object
         */
-        static SharedPtr create(slang::ShaderReflection* pSlangReflector ,std::string& log);
+        static SharedPtr create(slang::ShaderReflection* pSlangReflector, ResourceScope scopeToReflect, std::string& log);
 
         /** Get the index of a parameter block
         */
@@ -621,9 +663,14 @@ namespace Falcor
         */
         const ParameterBlockReflection::BindLocation translateRegisterIndicesToBindLocation(uint32_t regSpace, uint32_t baseRegIndex, BindType type) const { return mResourceBindMap.at({regSpace, baseRegIndex, type}); }
 
+        /** Merge to reflection objects into a new one
+        */
+        static SharedPtr merge(const ProgramReflection& first, const ProgramReflection& second);
     private:
-        ProgramReflection(slang::ShaderReflection* pSlangReflector, std::string& log);
+        ProgramReflection(slang::ShaderReflection* pSlangReflector, ResourceScope scopeToReflect, std::string& log);
+        ProgramReflection(const ProgramReflection&) = default;
         void addParameterBlock(const ParameterBlockReflection::SharedConstPtr& pBlock);
+        void updateDefaultBlockResourceBindings();
 
         std::vector<ParameterBlockReflection::SharedConstPtr> mpParameterBlocks;
         std::unordered_map<std::string, size_t> mParameterBlocksIndices;
@@ -658,6 +705,8 @@ namespace Falcor
 
         std::unordered_map<ResourceBinding, ParameterBlockReflection::BindLocation, ResourceBindingHash> mResourceBindMap;
     };
+
+    enum_class_operators(ProgramReflection::ResourceScope);
 
     inline const std::string to_string(ReflectionBasicType::Type type)
     {

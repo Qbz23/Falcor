@@ -30,8 +30,6 @@
 
 #include "VRSystem.h"
 #include "openvr.h"
-#include "glm/glm.hpp"
-#include "glm/gtx/transform.hpp"
 #include "API/Device.h"
 #include "Utils/StringUtils.h"
 
@@ -173,10 +171,8 @@ namespace Falcor
         return spVrSystem;
     }
 
-    void VRSystem::initDisplayAndController(RenderContext::SharedPtr pRenderContext)
+    void VRSystem::initDisplayAndController()
     {
-        mpContext = pRenderContext;
-
         // Create a display/hmd object for our system
         spVrSystem->mDisplay = VRDisplay::create(spVrSystem->mpHMD, spVrSystem->mpModels);
         spVrSystem->mpHMDModel = spVrSystem->mDisplay->getRenderableModel();

@@ -5,14 +5,40 @@
 
 namespace Falcor
 {
+    static std::string readToken(std::stringstream& args)
+    {
+        std::string token;
+
+        while(1)
+        {
+            std::string tmp;
+            std::getline(args, tmp, ' ');
+            token += tmp;
+            // If there are odd number of '"', read some more
+            if (std::count(token.begin(), token.end(), '"') % 2)
+            {
+                // Read until the next '"'
+                std::string s;
+                std::getline(args, s, '"');
+                token += ' ' + s + '"';
+                // If there is a space after the '"', we're done, otherwise keep reading
+                if (args.eof() || args.peek() == ' ') return token;
+            }
+            else
+            {
+                return token;
+            }
+        }
+    }
+
     void ArgList::parseCommandLine(const std::string& cmdLine)
     {
         std::stringstream args(cmdLine);
-        std::string token;
         std::string currentArg;
         while (!args.eof())
         {
-            std::getline(args, token, ' ');
+            std::string token = readToken(args);
+
             size_t dashIndex = token.find('-');
             if (dashIndex == 0 && isalpha(token[1]))
             {
@@ -47,7 +73,7 @@ namespace Falcor
         {
             return mMap.at(key);
         }
-        catch(std::out_of_range)
+        catch(const std::out_of_range&)
         {
             return std::vector<ArgList::Arg>();
         }
@@ -91,6 +117,24 @@ namespace Falcor
         catch (std::out_of_range& e)
         {
             logWarning("Unable to convert " + mValue + " to unsigned. Exception: " + e.what());
+            return -1;
+        }
+    }
+
+    uint64_t ArgList::Arg::asUint64() const
+    {
+        try
+        {
+            return std::stoull(mValue);
+        }
+        catch (std::invalid_argument& e)
+        {
+            logWarning("Unable to convert " + mValue + " to unsigned 64. Exception: " + e.what());
+            return -1;
+        }
+        catch (std::out_of_range& e)
+        {
+            logWarning("Unable to convert " + mValue + " to unsigned 64. Exception: " + e.what());
             return -1;
         }
     }

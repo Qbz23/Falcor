@@ -35,6 +35,7 @@ namespace Falcor
 {
     class Sampler;
     class Device;
+    class RenderContext;
 
     /** Abstracts the API texture objects
     */
@@ -88,6 +89,10 @@ namespace Falcor
         /** Get the resource format
         */
         ResourceFormat getFormat() const { return mFormat; }
+
+        /** Create a resource from an existing API-handle
+        */
+        static SharedPtr createFromApiHandle(ApiHandle handle, Type type, uint32_t width, uint32_t height, uint32_t depth, ResourceFormat format, uint32_t sampleCount, uint32_t arraySize, uint32_t mipLevels, State initState, BindFlags bindFlags = BindFlags::ShaderResource);
 
         /** Create a 1D texture
             \param Width The width of the texture.
@@ -160,15 +165,7 @@ namespace Falcor
 
         /** Generates mipmaps for a specified texture object.
         */
-        void generateMips();
-
-        /** Name the texture
-        */
-        void setName(const std::string& name) { mName = name; }
-
-        /** Get the texture name
-        */
-        const std::string& getName() const { return mName; }
+        void generateMips(RenderContext* pContext);
 
         /** In case the texture was loaded from a file, use this to set the filename
         */
@@ -177,17 +174,6 @@ namespace Falcor
         /** In case the texture was loaded from a file, get the source filename
         */
         const std::string& getSourceFilename() const { return mSourceFilename; }
-
-        void copySubresource(const Texture* pDst, uint32_t srcMipLevel, uint32_t srcArraySlice, uint32_t dstMipLevel, uint32_t dstArraySlice) const;
-
-        /** If the texture has been created as using sparse storage, makes individual physically pages resident and non-resident.
-          * Use page index.
-        */
-        void setSparseResidencyPageIndex(bool isResident, uint32_t mipLevel, uint32_t pageX, uint32_t pageY, uint32_t pageZ, uint32_t width = 1, uint32_t height = 1, uint32_t depth = 1);
-
-        /** If the texture has been created as using sparse storage, makes individual physically pages resident and non-resident.
-        */
-        glm::i32vec3 getSparseResidencyPageSize();
 
     protected:
         friend class Device;
@@ -199,7 +185,6 @@ namespace Falcor
 
         static uint32_t tempDefaultUint;
 
-        std::string mName;
         std::string mSourceFilename;
 
         Texture(uint32_t width, uint32_t height, uint32_t depth, uint32_t arraySize, uint32_t mipLevels, uint32_t sampleCount, ResourceFormat format, Type Type, BindFlags bindFlags);

@@ -32,7 +32,7 @@
 
 namespace Falcor
 {
-    class ComputeContext : public CopyContext, public inherit_shared_from_this<CopyContext, ComputeContext>
+    class ComputeContext : public CopyContext
     {
     public:
         using SharedPtr = std::shared_ptr<ComputeContext>;
@@ -98,11 +98,7 @@ namespace Falcor
         /** Executes a dispatch call. Args to the dispatch call are contained in argbuffer 
         */
         void dispatchIndirect(const Buffer* argBuffer, uint64_t argBufferOffset);
-
-        /** Reset the context
-        */
-        virtual void reset() override;
-
+        
         /** Submit the command list
         */
         virtual void flush(bool wait = false) override;

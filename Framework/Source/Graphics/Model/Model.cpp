@@ -32,7 +32,6 @@
 #include "Loaders/BinaryModelExporter.h"
 #include "Utils/Platform/OS.h"
 #include "Mesh.h"
-#include "glm/geometric.hpp"
 #include "AnimationController.h"
 #include "Animation.h"
 #include "API/Buffer.h"
@@ -47,7 +46,42 @@ namespace Falcor
 {
 
     uint32_t Model::sModelCounter = 0;
-    const char* Model::kSupportedFileFormatsStr = "Supported Formats\0*.obj;*.bin;*.dae;*.x;*.md5mesh;*.ply;*.fbx;*.3ds;*.blend;*.ase;*.ifc;*.xgl;*.zgl;*.dxf;*.lwo;*.lws;*.lxo;*.stl;*.x;*.ac;*.ms3d;*.cob;*.scn;*.3d;*.mdl;*.mdl2;*.pk3;*.smd;*.vta;*.raw;*.ter\0\0";
+    const FileDialogFilterVec Model::kFileExtensionFilters = 
+    {
+        {"obj"},
+        {"bin"},
+        {"dae"},
+        {"x"},
+        {"md5mesh"},
+        {"ply"},
+        {"fbx"},
+        {"3ds"},
+        {"blend"},
+        {"ase"},
+        {"ifc"},
+        {"xgl"},
+        {"zgl"},
+        {"dxf"},
+        {"lwo"},
+        {"lws"},
+        {"lxo"},
+        {"stl"},
+        {"x"},
+        {"ac"},
+        {"ms3d"},
+        {"cob"},
+        {"scn"},
+        {"3d"},
+        {"mdl"},
+        {"mdl2"},
+        {"pk3"},
+        {"smd"},
+        {"vta"},
+        {"raw"},
+        {"ter"},
+        {"gltf"},
+        {"glb"}
+    };
 
     // Method to sort meshes
     bool compareMeshes(const Mesh::SharedPtr& p1, const Mesh::SharedPtr& p2)
@@ -75,6 +109,7 @@ namespace Falcor
         mTextureCount = other.mTextureCount;
 
         mMeshes = other.mMeshes;
+        mpSkinningCache = other.mpSkinningCache;
         if(other.mpAnimationController)
         {
             mpAnimationController = AnimationController::create(*other.mpAnimationController);
@@ -169,15 +204,13 @@ namespace Falcor
             // Track material
             uniqueMaterials.insert(pMaterial);
 
-            // Track all of the material's textures
-            for (uint32_t i = 0; i < pMaterial->getNumLayers(); i++)
-            {
-                uniqueTextures.insert(pMaterial->getLayer(i).pTexture.get());
-            }
-
+            // Track all of the material's textures            
+            uniqueTextures.insert(pMaterial->getBaseColorTexture().get());
+            uniqueTextures.insert(pMaterial->getSpecularTexture().get());
+            uniqueTextures.insert(pMaterial->getEmissiveTexture().get());
             uniqueTextures.insert(pMaterial->getNormalMap().get());
-            uniqueTextures.insert(pMaterial->getAlphaMap().get());
-            uniqueTextures.insert(pMaterial->getAmbientOcclusionMap().get());
+            uniqueTextures.insert(pMaterial->getOcclusionMap().get());
+            uniqueTextures.insert(pMaterial->getLightMap().get());
             uniqueTextures.insert(pMaterial->getHeightMap().get());
 
             // Track the material's buffers
@@ -221,12 +254,20 @@ namespace Falcor
         mRadius = glm::length(modelMin - modelMax) * 0.5f;
     }
 
-    void Model::animate(double currentTime)
+    bool Model::animate(double currentTime)
     {
+        bool changed = false;
         if(mpAnimationController)
         {
             mpAnimationController->animate(currentTime);
+            changed = true;     // TODO: AnimationController::animate should return changed status. For now just mark it as always changed.
+
+            if (update())
+            {
+                changed = true;
+            }
         }
+        return changed;
     }
 
     bool Model::hasAnimations() const
@@ -297,6 +338,42 @@ namespace Falcor
     void Model::setAnimationController(AnimationController::UniquePtr pAnimController)
     {
         mpAnimationController = std::move(pAnimController);
+    }
+
+    void Model::attachSkinningCache(SkinningCache::SharedPtr pSkinningCache)
+    {
+        mpSkinningCache = pSkinningCache;
+    }
+
+    SkinningCache::SharedPtr Model::getSkinningCache() const
+    {
+        return mpSkinningCache;
+    }
+
+    Vao::SharedPtr Model::getMeshVao(const Mesh* pMesh) const
+    {
+        assert(pMesh);
+        Vao::SharedPtr pVao = nullptr;
+        if (pMesh->hasBones())
+        {
+            assert(mpSkinningCache);
+            pVao = mpSkinningCache->getVao(pMesh);
+        }
+        else
+        {
+            pVao = pMesh->getVao();
+        }
+        assert(pVao);
+        return pVao;
+    }
+
+    bool Model::update()
+    {
+        if (mpSkinningCache)
+        {
+            return mpSkinningCache->update(this);
+        }
+        return false;
     }
 
     void Model::addMeshInstance(const Mesh::SharedPtr& pMesh, const glm::mat4& baseTransform)

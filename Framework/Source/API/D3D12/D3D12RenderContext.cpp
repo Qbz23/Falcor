@@ -32,37 +32,17 @@
 #include "D3D12Resource.h"
 #include "API/D3D12/D3D12State.h"
 #include "API/DescriptorSet.h"
+#include "Experimental/Raytracing/RtProgramVars.h"
+#include "Experimental/Raytracing/RtState.h"
 
 namespace Falcor
 {
-    struct BlitData
-    {
-        FullScreenPass::UniquePtr pPass;
-        GraphicsVars::SharedPtr pVars;
-        GraphicsState::SharedPtr pState;
-
-        Sampler::SharedPtr pLinearSampler;
-        Sampler::SharedPtr pPointSampler;
-
-        ConstantBuffer::SharedPtr pSrcRectBuffer;
-        vec2 prevSrcRectOffset;
-        vec2 prevSrcReftScale;
-
-        // Variable offsets in constant buffer
-        size_t offsetVarOffset;
-        size_t scaleVarOffset;
-
-        ProgramReflection::BindLocation texBindLoc;
-        ProgramReflection::BindLocation samplerBindLoc;
-    };
-
-    static BlitData gBlitData;
     static void initBlitData()
     {
         if (gBlitData.pVars == nullptr)
         {
             gBlitData.pPass = FullScreenPass::create("Framework/Shaders/Blit.vs.slang", "Framework/Shaders/Blit.ps.slang");
-            gBlitData.pVars = GraphicsVars::create(gBlitData.pPass->getProgram()->getActiveVersion()->getReflector());
+            gBlitData.pVars = GraphicsVars::create(gBlitData.pPass->getProgram()->getReflector());
             gBlitData.pState = GraphicsState::create();
 
             gBlitData.pSrcRectBuffer = gBlitData.pVars->getConstantBuffer("SrcRectCB");
@@ -76,23 +56,25 @@ namespace Falcor
             gBlitData.pLinearSampler = Sampler::create(desc);
             desc.setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point).setAddressingMode(Sampler::AddressMode::Clamp, Sampler::AddressMode::Clamp, Sampler::AddressMode::Clamp);
             gBlitData.pPointSampler = Sampler::create(desc);
-            const auto& pDefaultBlockReflection = gBlitData.pPass->getProgram()->getActiveVersion()->getReflector()->getDefaultParameterBlock();
+            const auto& pDefaultBlockReflection = gBlitData.pPass->getProgram()->getReflector()->getDefaultParameterBlock();
             gBlitData.texBindLoc = pDefaultBlockReflection->getResourceBinding("gTex");
             gBlitData.samplerBindLoc = pDefaultBlockReflection->getResourceBinding("gSampler");
         }
     }
 
-    void releaseBlitData()
+    void releaseApiData()
     {
         gBlitData.pSrcRectBuffer = nullptr;
         gBlitData.pVars = nullptr;
         gBlitData.pPass = nullptr;
         gBlitData.pState = nullptr;
+        gpDrawCommandSig = nullptr;
+        gpDrawIndexCommandSig = nullptr;
     }
 
     RenderContext::~RenderContext()
     {
-        releaseBlitData();
+        releaseApiData();
     }
 
 
@@ -124,7 +106,7 @@ namespace Falcor
         mCommandsPending = true;
     }
 
-    static void D3D12SetVao(RenderContext* pCtx, CommandListHandle pList, const Vao* pVao)
+    static void D3D12SetVao(RenderContext* pCtx, ID3D12GraphicsCommandList* pList, const Vao* pVao)
     {
         D3D12_VERTEX_BUFFER_VIEW vb[D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {};
         D3D12_INDEX_BUFFER_VIEW ib = {};
@@ -188,11 +170,48 @@ namespace Falcor
                 }
             }
         }
-
-        pCtx->getLowLevelData()->getCommandList()->OMSetRenderTargets(colorTargets, pRTV.data(), FALSE, &pDSV);
+        ID3D12GraphicsCommandList* pCmdList = pCtx->getLowLevelData()->getCommandList().GetInterfacePtr();
+        pCmdList->OMSetRenderTargets(colorTargets, pRTV.data(), FALSE, &pDSV);
     }
 
-    static void D3D12SetViewports(CommandListHandle pList, const GraphicsState::Viewport* vp)
+    static void D3D12SetSamplePositions(ID3D12GraphicsCommandList* pList, const Fbo* pFbo)
+    {
+        if (!pFbo) return;
+        ID3D12GraphicsCommandList1* pList1;
+        pList->QueryInterface(IID_PPV_ARGS(&pList1));
+
+        bool featureSupported = gpDevice->isFeatureSupported(Device::SupportedFeatures::ProgrammableSamplePositionsPartialOnly) ||
+                                gpDevice->isFeatureSupported(Device::SupportedFeatures::ProgrammableSamplePositionsFull);
+
+        const auto& samplePos = pFbo->getSamplePositions();
+
+#if _LOG_ENABLED
+        if (featureSupported == false && samplePos.size() > 0)
+        {
+            logError("The FBO specifies programmable sample positions, but the hardware does not support it");
+        }
+        else if (gpDevice->isFeatureSupported(Device::SupportedFeatures::ProgrammableSamplePositionsPartialOnly) && samplePos.size() > 1)
+        {
+            logError("The FBO specifies multiple programmable sample positions, but the hardware only supports one");
+        }
+#endif
+        if(featureSupported)
+        {
+            static_assert(offsetof(Fbo::SamplePosition, xOffset) == offsetof(D3D12_SAMPLE_POSITION, X), "SamplePosition.X");
+            static_assert(offsetof(Fbo::SamplePosition, yOffset) == offsetof(D3D12_SAMPLE_POSITION, Y), "SamplePosition.Y");
+
+            if (samplePos.size())
+            {
+                pList1->SetSamplePositions(pFbo->getSampleCount(), pFbo->getSamplePositionsPixelCount(), (D3D12_SAMPLE_POSITION*)samplePos.data());
+            }
+            else
+            {
+                pList1->SetSamplePositions(0, 0, nullptr);
+            }
+        }
+    }
+
+    static void D3D12SetViewports(ID3D12GraphicsCommandList* pList, const GraphicsState::Viewport* vp)
     {
         static_assert(offsetof(GraphicsState::Viewport, originX) == offsetof(D3D12_VIEWPORT, TopLeftX), "VP originX offset");
         static_assert(offsetof(GraphicsState::Viewport, originY) == offsetof(D3D12_VIEWPORT, TopLeftY), "VP originY offset");
@@ -204,7 +223,7 @@ namespace Falcor
         pList->RSSetViewports(D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE, (D3D12_VIEWPORT*)vp);
     }
 
-    static void D3D12SetScissors(CommandListHandle pList, const GraphicsState::Scissor* sc)
+    static void D3D12SetScissors(ID3D12GraphicsCommandList* pList, const GraphicsState::Scissor* sc)
     {
         static_assert(offsetof(GraphicsState::Scissor, left) == offsetof(D3D12_RECT, left), "Scissor.left offset");
         static_assert(offsetof(GraphicsState::Scissor, top) == offsetof(D3D12_RECT, top), "Scissor.top offset");
@@ -220,14 +239,17 @@ namespace Falcor
         // Vao must be valid so at least primitive topology is known
         assert(mpGraphicsState->getVao().get());
 
-        // Apply the vars. Must be first because applyGraphicsVars() might cause a flush
-        if (mpGraphicsVars)
+        if (is_set(StateBindFlags::Vars, mBindFlags))
         {
-            applyGraphicsVars();
-        }
-        else
-        {
-            mpLowLevelData->getCommandList()->SetGraphicsRootSignature(RootSignature::getEmpty()->getApiHandle());
+            // Apply the vars. Must be first because applyGraphicsVars() might cause a flush
+            if (mpGraphicsVars)
+            {
+                applyGraphicsVars();
+            }
+            else
+            {
+                mpLowLevelData->getCommandList()->SetGraphicsRootSignature(RootSignature::getEmpty()->getApiHandle());
+            }
         }
 
 #if _ENABLE_NVAPI
@@ -242,13 +264,36 @@ namespace Falcor
 
         mBindGraphicsRootSig = false;
 
-        CommandListHandle pList = mpLowLevelData->getCommandList();
-        pList->IASetPrimitiveTopology(getD3DPrimitiveTopology(mpGraphicsState->getVao()->getPrimitiveTopology()));
-        D3D12SetVao(this, pList, mpGraphicsState->getVao().get());
-        D3D12SetFbo(this, mpGraphicsState->getFbo().get());
-        D3D12SetViewports(pList, &mpGraphicsState->getViewport(0));
-        D3D12SetScissors(pList, &mpGraphicsState->getScissors(0));
-        pList->SetPipelineState(mpGraphicsState->getGSO(mpGraphicsVars.get())->getApiHandle());
+        ID3D12GraphicsCommandList* pList = mpLowLevelData->getCommandList();
+        if (is_set(StateBindFlags::Topology, mBindFlags))
+        {
+            pList->IASetPrimitiveTopology(getD3DPrimitiveTopology(mpGraphicsState->getVao()->getPrimitiveTopology()));
+        }
+        if (is_set(StateBindFlags::Vao, mBindFlags))
+        {
+            D3D12SetVao(this, pList, mpGraphicsState->getVao().get());
+        }
+        if (is_set(StateBindFlags::Fbo, mBindFlags))
+        {
+            D3D12SetFbo(this, mpGraphicsState->getFbo().get());
+        }
+        if (is_set(StateBindFlags::SamplePositions, mBindFlags))
+        {
+            D3D12SetSamplePositions(pList, mpGraphicsState->getFbo().get());
+        }
+        if (is_set(StateBindFlags::Viewports, mBindFlags))
+        {
+            D3D12SetViewports(pList, &mpGraphicsState->getViewport(0));
+        }
+        if (is_set(StateBindFlags::Scissors, mBindFlags))
+        {
+            D3D12SetScissors(pList, &mpGraphicsState->getScissors(0));
+        }
+        if (is_set(StateBindFlags::PipelineState, mBindFlags))
+        {
+            pList->SetPipelineState(mpGraphicsState->getGSO(mpGraphicsVars.get())->getApiHandle());
+        }
+
         BlendState::SharedPtr blendState = mpGraphicsState->getBlendState();
         if (blendState != nullptr)
         {
@@ -287,14 +332,71 @@ namespace Falcor
     {
         prepareForDraw();
         resourceBarrier(argBuffer, Resource::State::IndirectArg);
-        mpLowLevelData->getCommandList()->ExecuteIndirect(spDrawCommandSig, 1, argBuffer->getApiHandle(), argBufferOffset, nullptr, 0);
+        mpLowLevelData->getCommandList()->ExecuteIndirect(gpDrawCommandSig, 1, argBuffer->getApiHandle(), argBufferOffset, nullptr, 0);
     }
 
     void RenderContext::drawIndexedIndirect(const Buffer* argBuffer, uint64_t argBufferOffset)
     {
         prepareForDraw();
         resourceBarrier(argBuffer, Resource::State::IndirectArg);
-        mpLowLevelData->getCommandList()->ExecuteIndirect(spDrawIndexCommandSig, 1, argBuffer->getApiHandle(), argBufferOffset, nullptr, 0);
+        mpLowLevelData->getCommandList()->ExecuteIndirect(gpDrawIndexCommandSig, 1, argBuffer->getApiHandle(), argBufferOffset, nullptr, 0);
+    }
+
+    void RenderContext::raytrace(RtProgramVars::SharedPtr pVars, RtState::SharedPtr pState, uint32_t width, uint32_t height)
+    {
+        raytrace(pVars, pState, width, height, 1);
+    }
+
+    void RenderContext::raytrace(RtProgramVars::SharedPtr pVars, RtState::SharedPtr pState, uint32_t width, uint32_t height, uint32_t depth)
+    {
+        resourceBarrier(pVars->getShaderTable().get(), Resource::State::NonPixelShader);
+
+        Buffer* pShaderTable = pVars->getShaderTable().get();
+        uint32_t recordSize = pVars->getRecordSize();
+        D3D12_GPU_VIRTUAL_ADDRESS startAddress = pShaderTable->getGpuAddress();
+
+        D3D12_DISPATCH_RAYS_DESC raytraceDesc = {};
+        raytraceDesc.Width = width;
+        raytraceDesc.Height = height;
+        raytraceDesc.Depth = depth;
+
+        // RayGen is the first entry in the shader-table
+        raytraceDesc.RayGenerationShaderRecord.StartAddress = startAddress + pVars->getRayGenRecordIndex() * recordSize;
+        raytraceDesc.RayGenerationShaderRecord.SizeInBytes = recordSize;
+        size_t tableSize = raytraceDesc.RayGenerationShaderRecord.SizeInBytes;
+
+        // Miss is the second entry in the shader-table
+        // If there are no entries, leave the start address as nullptr. The runtime validates that it's valid or null.
+        if (pVars->getMissProgramsCount() > 0)
+        {
+            raytraceDesc.MissShaderTable.StartAddress = startAddress + pVars->getFirstMissRecordIndex() * recordSize;
+            raytraceDesc.MissShaderTable.StrideInBytes = recordSize;
+            raytraceDesc.MissShaderTable.SizeInBytes = recordSize * pVars->getMissProgramsCount();
+            assert(raytraceDesc.MissShaderTable.StartAddress >= startAddress + tableSize);
+            tableSize += raytraceDesc.MissShaderTable.SizeInBytes;
+        }
+
+        // Hit groups is the third entry in the shader-table
+        // If there are no entries, we leave the start address as nullptr. The runtime validates that it's valid or null.
+        if (pVars->getHitRecordsCount() > 0)
+        {
+            raytraceDesc.HitGroupTable.StartAddress = startAddress + pVars->getFirstHitRecordIndex() * recordSize;
+            raytraceDesc.HitGroupTable.StrideInBytes = recordSize;
+            raytraceDesc.HitGroupTable.SizeInBytes = recordSize * pVars->getHitRecordsCount();
+            assert(raytraceDesc.HitGroupTable.StartAddress >= startAddress + tableSize);
+            tableSize += raytraceDesc.HitGroupTable.SizeInBytes;
+        }
+
+        // Check that the buffer is large enough.
+        assert(pVars->getShaderTable()->getSize() >= tableSize);
+
+        auto pCmdList = getLowLevelData()->getCommandList();
+        pCmdList->SetComputeRootSignature(pVars->getGlobalVars()->getRootSignature()->getApiHandle().GetInterfacePtr());
+
+        // Dispatch
+        GET_COM_INTERFACE(pCmdList, ID3D12GraphicsCommandList4, pList4);
+        pList4->SetPipelineState1(pState->getRtso()->getApiHandle().GetInterfacePtr());
+        pList4->DispatchRays(&raytraceDesc);
     }
 
     void RenderContext::initDrawCommandSignatures()
@@ -309,13 +411,13 @@ namespace Falcor
         sigDesc.ByteStride = sizeof(D3D12_DRAW_ARGUMENTS);
         argDesc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
         sigDesc.pArgumentDescs = &argDesc;
-        gpDevice->getApiHandle()->CreateCommandSignature(&sigDesc, nullptr, IID_PPV_ARGS(&spDrawCommandSig));
+        gpDevice->getApiHandle()->CreateCommandSignature(&sigDesc, nullptr, IID_PPV_ARGS(&gpDrawCommandSig));
 
         //Draw index
         sigDesc.ByteStride = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
         argDesc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
         sigDesc.pArgumentDescs = &argDesc;
-        gpDevice->getApiHandle()->CreateCommandSignature(&sigDesc, nullptr, IID_PPV_ARGS(&spDrawIndexCommandSig));
+        gpDevice->getApiHandle()->CreateCommandSignature(&sigDesc, nullptr, IID_PPV_ARGS(&gpDrawIndexCommandSig));
     }
 
     void RenderContext::blit(ShaderResourceView::SharedPtr pSrc, RenderTargetView::SharedPtr pDst, const uvec4& srcRect, const uvec4& dstRect, Sampler::Filter filter)
@@ -396,5 +498,32 @@ namespace Falcor
         gBlitData.pState->popFbo(false);
         popGraphicsState();
         popGraphicsVars();
+    }
+
+    void RenderContext::resolveSubresource(const Texture::SharedPtr& pSrc, uint32_t srcSubresource, const Texture::SharedPtr& pDst, uint32_t dstSubresource)
+    {
+        DXGI_FORMAT format = getDxgiFormat(pDst->getFormat());
+        mpLowLevelData->getCommandList()->ResolveSubresource(pDst->getApiHandle(), dstSubresource, pSrc->getApiHandle(), srcSubresource, format);
+        mCommandsPending = true;
+    }
+
+    void RenderContext::resolveResource(const Texture::SharedPtr& pSrc, const Texture::SharedPtr& pDst)
+    {
+        bool match = true;
+        match = match && (pSrc->getMipCount() == pDst->getMipCount());
+        match = match && (pSrc->getArraySize() == pDst->getArraySize());
+        if (!match)
+        {
+            logWarning("Can't resolve a resource. The src and dst textures have a different array-size or mip-count");
+        }
+
+        resourceBarrier(pSrc.get(), Resource::State::ResolveSource);
+        resourceBarrier(pDst.get(), Resource::State::ResolveDest);
+
+        uint32_t subresourceCount = pSrc->getMipCount() * pSrc->getArraySize();
+        for (uint32_t s = 0; s < subresourceCount; s++)
+        {
+            resolveSubresource(pSrc, s, pDst, s);
+        }
     }
 }

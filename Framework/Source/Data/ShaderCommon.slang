@@ -25,22 +25,19 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-
-/*******************************************************************
-                    Common OGL bindings
-*******************************************************************/
-
 #ifndef _FALCOR_SHADER_COMMON_H_
 #define _FALCOR_SHADER_COMMON_H_
 
 #include "HostDeviceData.h"
 
-cbuffer InternalPerFrameCB : register(b10)
+shared cbuffer InternalPerFrameCB : register(b10)
 {
-    CameraData gCam;
-    float3 gAmbientLighting;
+    CameraData gCamera;
     uint32_t gLightsCount;
+    float3 internalPerFrameCBPad;
     LightData gLights[MAX_LIGHT_SOURCES];
+    LightProbeData gLightProbe;
+    LightProbeSharedResources gProbeShared;
 };
 
 cbuffer InternalPerMeshCB
@@ -81,18 +78,11 @@ float3x3 getBlendedInvTransposeBoneMat(float4 weights, uint4 ids)
 #endif
 
 ParameterBlock<MaterialData> gMaterial;
-cbuffer InternalPerMaterialCB
-{
-    MaterialData gTemporalMaterial;
-    float gTemporalLODThreshold;
-    bool gEnableTemporalNormalMaps;
-    bool gDebugTemporalMaterial;
-};
 
 float2 calcMotionVector(float2 pixelCrd, float4 prevPosH, float2 renderTargetDim)
 {
     float2 prevCrd = prevPosH.xy / prevPosH.w;
-#ifdef FALCOR_GLSL
+#ifdef FALCOR_VK
     prevCrd *= float2(0.5, 0.5);
 #else
     prevCrd *= float2(0.5, -0.5);
@@ -102,23 +92,46 @@ float2 calcMotionVector(float2 pixelCrd, float4 prevPosH, float2 renderTargetDim
     return prevCrd - normalizedCrd;
 }
 
-/*******************************************************************
-                    GLSL Evaluation routines
-*******************************************************************/
-#if 0
-bool isSamplerBound(in sampler2D sampler)
+/** This struct describes the geometric data for a specific hit point used for lighting calculations 
+*/
+struct ShadingData
 {
-    return any(ufloat2(sampler) != 0);
-}
+    float3    posW;         ///< Shading hit position in world space
+    float3    V;            ///< Direction to the eye at shading hit
+    float3    N;            ///< Shading normal at shading hit
+    float3    T;            ///< Shading tangent at shading hit
+    float3    B;            ///< Shading bitangent at shading hit
+    float2    uv;           ///< Texture mapping coordinates
+    float     NdotV;        // Unclamped, can be negative
 
-float4 fetchTextureIfFound(in sampler2D sampler, in float2 uv, in float2 duvdx, in float2 duvdy)
-{
-    float4 ret = float4(1.0f);
-    if(isSamplerBound(sampler)) 
-    {
-        ret = textureGrad(sampler, uv, duvdx, duvdy);
-    }
-    return ret;
-}
-#endif // defined(FALCOR_GLSL)
+    // Pre-loaded texture data
+    float3 diffuse;
+    float  opacity;
+    float3 specular;
+    float  linearRoughness; // This is the original roughness, before re-mapping. It is required for the Disney diffuse term
+    float  roughness;       // This is the re-mapped roughness value, which should be used for GGX computations
+    float3 emissive;
+    float4 occlusion;
+    float3 lightMap;
+    float2 height;
+    float IoR;
+    bool doubleSidedMaterial;
+};
+
+#define interfacify(a) typedef a I##a
+interfacify(Texture1D);
+interfacify(Texture1DArray);
+interfacify(Texture2D);
+interfacify(Texture2DArray);
+interfacify(Texture3D);
+interfacify(TextureCube);
+interfacify(TextureCubeArray);
+
+interfacify(RWTexture1D);
+interfacify(RWTexture1DArray);
+interfacify(RWTexture2D);
+interfacify(RWTexture2DArray);
+interfacify(RWTexture3D);
+#undef interfacify
+
 #endif  // _FALCOR_SHADER_COMMON_H_

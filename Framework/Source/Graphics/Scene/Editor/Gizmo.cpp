@@ -29,7 +29,6 @@
 #include "Framework.h"
 #include "Graphics/Scene/Editor/Gizmo.h"
 #include "glm/gtx/intersect.hpp"
-#include "glm/gtc/epsilon.hpp"
 #include "glm/gtx/matrix_interpolation.hpp"
 #include "Utils/Math/FalcorMath.h"
 #include <cmath>
@@ -52,7 +51,7 @@ namespace Falcor
         }
     }
 
-    bool Gizmo::beginAction(const Camera::SharedPtr& pCamera, const Scene::ModelInstance::SharedPtr& pAxisModelInstance)
+    bool Gizmo::beginAction(const Camera::SharedPtr& pCamera, const Scene::ModelInstance::SharedConstPtr& pAxisModelInstance)
     {
         for (uint32_t i = 0; i < 3; i++)
         {

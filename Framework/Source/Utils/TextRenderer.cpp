@@ -29,7 +29,6 @@
 #include "Font.h"
 #include "TextRenderer.h"
 #include <vector>
-#include "glm/mat4x4.hpp"
 
 namespace Falcor
 {
@@ -63,8 +62,7 @@ namespace Falcor
 
     TextRenderer::TextRenderer()
     {
-        static const std::string kVsFile("Framework/Shaders/TextRenderer.vs.slang");
-        static const std::string kFsFile("Framework/Shaders/TextRenderer.ps.slang");
+        static const std::string kShaderFile("Framework/Shaders/TextRenderer.slang");
 
         // Create a vertex buffer
         const uint32_t vbSize = (uint32_t)(sizeof(Vertex)*kMaxBatchSize*arraysize(kVertexPos));
@@ -72,7 +70,7 @@ namespace Falcor
 
         // Create the RenderState
         mpPipelineState = GraphicsState::create();
-        GraphicsProgram::SharedPtr pProgram = GraphicsProgram::createFromFile(kVsFile, kFsFile);
+        GraphicsProgram::SharedPtr pProgram = GraphicsProgram::createFromFile(kShaderFile, "vs", "ps");
         mpPipelineState->setProgram(pProgram);
         mpPipelineState->setVao(createVAO(mpVertexBuffer));
 
@@ -99,7 +97,7 @@ namespace Falcor
         mpFont = Font::create();
 
         // Create and initialize the program variables
-        mpProgramVars = GraphicsVars::create(pProgram->getActiveVersion()->getReflector(), true);
+        mpProgramVars = GraphicsVars::create(pProgram->getReflector(), true);
         // Initialize the buffer
         auto pCB = mpProgramVars["PerFrameCB"];
         mVarOffsets.vpTransform = pCB->getVariableOffset("gvpTransform");
@@ -109,17 +107,16 @@ namespace Falcor
 
     TextRenderer::~TextRenderer() = default;
 
-    void TextRenderer::begin(const RenderContext::SharedPtr& pRenderContext, const glm::vec2& startPos)
+    void TextRenderer::begin(RenderContext* pRenderContext, const glm::vec2& startPos)
     {
         mCurPos = startPos;
         mStartPos = startPos;
-        mpRenderContext = pRenderContext;
 
         const GraphicsState* pState = pRenderContext->getGraphicsState().get();
 
         // Set the current FBO into the render state
         mpPipelineState->setFbo(pState->getFbo());
-        mpRenderContext->pushGraphicsState(mpPipelineState);
+        pRenderContext->pushGraphicsState(mpPipelineState);
 
         GraphicsState::Viewport VP(0, 0, (float)pState->getFbo()->getWidth(), (float)pState->getFbo()->getHeight(), 0, 1);
         mpPipelineState->setViewport(0, VP);
@@ -140,38 +137,36 @@ namespace Falcor
         mpProgramVars["PerFrameCB"]->setVariable(mVarOffsets.fontColor, mTextColor);
         pRenderContext->setGraphicsVars(mpProgramVars);
 
-
         // Map the buffer
         mpBufferData = (Vertex*)mpVertexBuffer->map(Buffer::MapType::WriteDiscard);
     }
 
-    void TextRenderer::end()
+    void TextRenderer::end(RenderContext* pRenderContext)
     {
-        flush();
+        flush(pRenderContext);
         mpVertexBuffer->unmap();
-        mpRenderContext->popGraphicsState();
-        mpRenderContext = nullptr;
+        pRenderContext->popGraphicsState();
     }
 
-    void TextRenderer::flush()
+    void TextRenderer::flush(RenderContext* pRenderContext)
     {
         if(mCurrentVertexID != 0)
         {
             mpVertexBuffer->unmap();
-            mpRenderContext->draw(mCurrentVertexID, 0);
+            pRenderContext->draw(mCurrentVertexID, 0);
             mCurrentVertexID = 0;
             mpVertexBuffer->map(Buffer::MapType::WriteDiscard);
         }
     }
 
-    void TextRenderer::renderLine(const std::string& line)
+    void TextRenderer::renderLine(RenderContext* pRenderContext, const std::string& line)
     {
         for(size_t CurChar = 0; CurChar < line.size() ; CurChar++)
         {
             // Make sure we enough space for the next char
             if(mCurrentVertexID + arraysize(kVertexPos) > mpVertexBuffer->getSize())
             {
-                flush();
+                flush(pRenderContext);
             }
 
             char c = line[CurChar];
