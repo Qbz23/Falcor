@@ -73,9 +73,9 @@ namespace Falcor
         AssimpModelImporter(const AssimpModelImporter&) = delete;
         void operator=(const AssimpModelImporter&) = delete;
 
-        bool initModel(const std::string& filename, bool forcePatch = false);
-        bool createDrawList(const aiScene* pScene, bool forcePatch = false);
-        bool parseAiSceneNode(const aiNode* pCurrent, const aiScene* pScene, IdToMesh& aiToFalcorMesh, bool forcePatch = false);
+        bool initModel(const std::string& filename);
+        bool createDrawList(const aiScene* pScene);
+        bool parseAiSceneNode(const aiNode* pCurrnt, const aiScene* pScene, IdToMesh& aiToFalcorMesh);
         bool createAllMaterials(const aiScene* pScene, const std::string& modelFolder, bool isObjFile, bool useSrgb);
 
         void createAnimationController(const aiScene* pScene);
