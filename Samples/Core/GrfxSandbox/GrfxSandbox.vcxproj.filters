@@ -6,4 +6,22 @@
   <ItemGroup>
     <ClInclude Include="GrfxSandbox.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Data">
+      <UniqueIdentifier>{3787e873-3324-494c-b394-fbf2d06555c7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Data\GrfxSandbox.slang">
+      <Filter>Data</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Data\ImageEdge.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\Voronoi.slang">
+      <Filter>Data</Filter>
+    </FxCompile>
+  </ItemGroup>
 </Project>

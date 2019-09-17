@@ -27,6 +27,24 @@
 ***************************************************************************/
 #include "GrfxSandbox.h"
 
+bool GuiUint(Gui* pGui, const char* label, uint32_t* pUint, uint32_t min, uint32_t max)
+{
+    assert(*pUint <= INT_MAX && min >= 0 && max <= INT_MAX);
+
+    int i = (int)*pUint;
+    int iMin = (int)min;
+    int iMax = (int)max;
+    if (pGui->addIntVar(label, i, iMin, iMax))
+    {
+        *pUint = (uint32_t)i;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 void GrfxSandbox::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
 {
     if (pGui->beginGroup("Grfx Sandbox"))
@@ -34,6 +52,7 @@ void GrfxSandbox::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
         Gui::DropdownList modeList;
         modeList.push_back({ 0, "Hello Falcor" });
         modeList.push_back({ 1, "Edge Rendering" });
+        modeList.push_back({ 2, "Voronoi" });
         pGui->addDropdown("Mode", modeList, (uint32_t&)mMode);
 
         switch (mMode)
@@ -101,14 +120,141 @@ void GrfxSandbox::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
 
             break;
         }
+        case Voronoi:
+        {
+            if (pGui->beginGroup("Voronoi"))
+            {
+                if (pGui->addButton("Regenerate"))
+                {
+                    mVoronoiResources.bStale = true;
+                }
+
+                mVoronoiResources.bStale |= GuiUint(
+                    pGui,
+                    "NumCells",
+                    &mVoronoiResources.mNumCells,
+                    1,
+                    mVoronoiResources.mkMaxNumCells);
+                float maxJitter = (1.f / (float)sqrt(mVoronoiResources.mNumCells)) * mVoronoiResources.kUiJitterScale;
+                mVoronoiResources.bStale |= pGui->addFloat2Var(
+                    "Jitter",
+                    mVoronoiResources.jitter,
+                    0.f,
+                    maxJitter);
+                mVoronoiResources.bStale |= pGui->addFloatVar(
+                    "ColorSaturation",
+                    mVoronoiResources.colorSaturation,
+                    0.f,
+                    1.f);
+                mVoronoiResources.bStale |= pGui->addFloatVar(
+                    "ColorValue",
+                    mVoronoiResources.colorValue,
+                    0.f,
+                    1.f);
+            }
+            break;
+        }
         }
 
         pGui->endGroup();
     }
 }
 
+//https://martin.ankerl.com/2009/12/09/how-to-create-random-colors-programmatically/
+float3 hsvToRgb(float h, float s, float v)
+{
+    int hI = (int)(h * 6);
+    float hF = h * 6 - hI;
+
+    float p = v * (1 - s);
+    float q = v * (1 - hF * s);
+    float t = (1 - (1 - hF) * s);
+
+    switch (hI)
+    {
+    case 0: return float3(v, t, p);
+    case 1: return float3(q, v, p);
+    case 2: return float3(p, v, t);
+    case 3: return float3(p, q, v);
+    case 4: return float3(t, p, v);
+    case 5: return float3(v, p, q);
+    default: assert(false); return float3(-1, -1, -1);
+    }
+}
+
+float2 randFloat2(float2 magnitude)
+{
+    float unitRandX = (float)rand() / RAND_MAX;
+    float unitRandY = (float)rand() / RAND_MAX;
+    // [0,1] -> [0, 2] -> [-1, 1]
+    unitRandX = (unitRandX * 2.f) - 1.f;
+    unitRandY = (unitRandY * 2.f) - 1.f;
+    return float2(magnitude.x * unitRandX, magnitude.y * unitRandY);
+}
+
+void GrfxSandbox::updateVoronoiInputs()
+{
+    // Update shader define
+    Program::DefineList defines;
+    defines.add("_NUM_SEED", std::to_string(mVoronoiResources.mNumCells));
+    mVoronoiResources.mpVoronoiPass = FullScreenPass::create("Voronoi.slang", defines);
+    // Not sure if necessary. Different active version has different reflector
+    mVoronoiResources.mpVars = GraphicsVars::create(mVoronoiResources.mpVoronoiPass->getProgram()->getActiveVersion()->getReflector());
+
+    // Recreate buffers bc theyre based on reflector
+    mVoronoiResources.mpSeedPoints = StructuredBuffer::create(
+        mVoronoiResources.mpVoronoiPass->getProgram(),
+        "SeedPoints",
+        mVoronoiResources.mkMaxNumCells,
+        Resource::BindFlags::ShaderResource
+    );
+
+    mVoronoiResources.mpCellColors = StructuredBuffer::create(
+        mVoronoiResources.mpVoronoiPass->getProgram(),
+        "Colors",
+        mVoronoiResources.mkMaxNumCells,
+        Resource::BindFlags::ShaderResource
+    );
+
+    // Points
+    // Just start with evenly distributed points
+    std::vector<float2> seedPoints(mVoronoiResources.mNumCells);
+    uint32_t sideSize = (uint32_t)sqrt(mVoronoiResources.mNumCells);
+    float delta = 1.0f / sideSize;
+    // Dealing with really small numbers in UI sucks.
+    float2 scaledJitter = float2(
+            mVoronoiResources.jitter.x / mVoronoiResources.kUiJitterScale,
+            mVoronoiResources.jitter.y / mVoronoiResources.kUiJitterScale);
+    for (uint32_t i = 0; i < sideSize; ++i)
+    {
+        for (uint32_t j = 0; j < sideSize; ++j)
+        {
+            float x = (i + 0.5f) * delta;
+            float y = (j + 0.5f) * delta;
+            seedPoints[i * sideSize + j] = float2(x, y) + randFloat2(scaledJitter);
+        }
+    }
+    mVoronoiResources.mpSeedPoints->setBlob(seedPoints.data(), 0, seedPoints.size() * sizeof(float2));
+
+    // Colors
+    std::vector<float3> colors(mVoronoiResources.mNumCells);
+    float goldenRatioConjugate = 0.618033988749895f;
+    float h = (float)rand();
+    float s = (float)rand();
+    float v = (float)rand();
+    for (uint32_t i = 0; i < mVoronoiResources.mNumCells; ++i)
+    {
+        h += goldenRatioConjugate;
+        h = fmodf(h, 1.f);
+        colors[i] = hsvToRgb(h, mVoronoiResources.colorSaturation, mVoronoiResources.colorValue);
+    }
+    mVoronoiResources.mpCellColors->setBlob(colors.data(), 0, colors.size() * sizeof(float3));
+}
+
 void GrfxSandbox::onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext)
 {
+    srand((uint32_t)time(nullptr));
+
     auto w = pSample->getWindow()->getClientAreaWidth();
     auto h = pSample->getWindow()->getClientAreaHeight();
 
@@ -166,6 +312,29 @@ void GrfxSandbox::onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext
 
         mEdgeResources.mPerFrame.texDim.x = w;
         mEdgeResources.mPerFrame.texDim.y = h;
+    }
+
+    // Voronoi Resources
+    {
+        // Shader is created in voronoi inputs fx, recreated to accomodate num cells
+
+        mVoronoiResources.mpState = GraphicsState::create();
+
+        // Tex to store the result and re-render it 
+        mVoronoiResources.mpVoronoiTex = Texture::create2D(
+            w,
+            h,
+            ResourceFormat::RGBA32Float,
+            1u,
+            1u,
+            nullptr,
+            ResourceBindFlags::RenderTarget | ResourceBindFlags::ShaderResource
+        );
+        mVoronoiResources.mpFbo = Fbo::create();
+        mVoronoiResources.mpFbo->attachColorTarget(mVoronoiResources.mpVoronoiTex, 0);
+
+        // Buffers of points and colors
+        updateVoronoiInputs();
     }
 }
 
@@ -234,6 +403,46 @@ void GrfxSandbox::onFrameRender(SampleCallbacks* pSample, RenderContext* pRender
         pRenderContext->setGraphicsVars(mEdgeResources.mpVars);
 
         mEdgeResources.mpEdgePass->execute(pRenderContext);
+        break;
+    }
+    case Voronoi:
+    {
+        //for debugging so you can capture the generation frame bc its every frame
+        //mVoronoiResources.bStale = true; 
+        if (mVoronoiResources.bStale)
+        {
+            pRenderContext->clearFbo(mVoronoiResources.mpFbo.get(), float4(0.f, 0.f, 0.f, 0.f), 1.0f, 0, FboAttachmentType::All);
+
+            // Re-set buffers based on input data
+            updateVoronoiInputs();
+
+            // Transition voronoi tex to rt
+            pRenderContext->resourceBarrier(
+                mVoronoiResources.mpFbo->getColorTexture(0).get(),
+                Resource::State::RenderTarget);
+
+            // Update Data 
+            mVoronoiResources.mpVars->setStructuredBuffer("SeedPoints", mVoronoiResources.mpSeedPoints);
+            mVoronoiResources.mpVars->setStructuredBuffer("Colors", mVoronoiResources.mpCellColors);
+
+            mVoronoiResources.mpState->setFbo(mVoronoiResources.mpFbo);
+            pRenderContext->setGraphicsState(mVoronoiResources.mpState);
+            pRenderContext->setGraphicsVars(mVoronoiResources.mpVars);
+
+            mVoronoiResources.mpVoronoiPass->execute(pRenderContext);
+
+            pRenderContext->resourceBarrier(
+                mVoronoiResources.mpFbo->getColorTexture(0).get(),
+                Resource::State::ShaderResource);
+
+            mVoronoiResources.bStale = false;
+        }
+
+        // Blit onto the render target regardless, bc its gonna get cleared
+        pRenderContext->blit(
+            mVoronoiResources.mpFbo->getColorTexture(0)->getSRV(),
+            pTargetFbo->getColorTexture(0)->getRTV());
+
         break;
     }
     }

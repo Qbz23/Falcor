@@ -26,7 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #pragma once
-#include "Falcor.h"
+#include <Falcor.h>
 
 using namespace Falcor;
 
@@ -55,7 +55,8 @@ private:
     {
         HelloFalcor = 0,
         EdgeRender = 1,
-        ModeCount = 2
+        Voronoi = 2,
+        ModeCount = 3
     } mMode;
 
     struct CoreResources //For HelloFalcor and input to other modes
@@ -96,4 +97,27 @@ private:
 
     } mEdgeResources;
 
+    struct VoronoiResources
+    {
+        const uint32_t mkMaxNumCells = 1024;
+        uint32_t mNumCells = 64;
+        float2 jitter = float2(7.5f, 7.5f);
+        float colorSaturation = 0.5f;
+        float colorValue = 0.95f;
+
+        // dealing with small numbers in UI sucks. div by this
+        const float kUiJitterScale = 100.0f;
+
+        bool bStale = true;
+
+        Texture::SharedPtr mpVoronoiTex;
+        Fbo::SharedPtr mpFbo;
+
+        FullScreenPass::UniquePtr mpVoronoiPass;
+        GraphicsState::SharedPtr mpState;
+        GraphicsVars::SharedPtr mpVars;
+        StructuredBuffer::SharedPtr mpSeedPoints;
+        StructuredBuffer::SharedPtr mpCellColors;
+    } mVoronoiResources;
+    void updateVoronoiInputs();
 };
