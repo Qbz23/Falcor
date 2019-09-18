@@ -23,5 +23,8 @@
     <FxCompile Include="Data\Voronoi.slang">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\Mosaic.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

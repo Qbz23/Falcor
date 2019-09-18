@@ -36,7 +36,8 @@ using namespace Falcor;
 // http://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15463-f11/www/final_proj/www/mteh/
 // https://en.wikipedia.org/wiki/Lloyd's_algorithm
 // https://www.cc.gatech.edu/~turk/my_papers/npr_ar_2008.pdf < main paper, above are about voronoi step
-
+// ^ above paper cites below 
+// http://www.dgp.toronto.edu/papers/ahausner_SIGGRAPH2001.pdf
 class GrfxSandbox : public Renderer
 {
 public:
@@ -56,7 +57,8 @@ private:
         HelloFalcor = 0,
         EdgeRender = 1,
         Voronoi = 2,
-        ModeCount = 3
+        Mosaic = 3,
+        ModeCount = 4
     } mMode;
 
     struct CoreResources //For HelloFalcor and input to other modes
@@ -101,6 +103,9 @@ private:
     {
         const uint32_t mkMaxNumCells = 1024;
         uint32_t mNumCells = 64;
+        bool bConstantlyUpdate = false;
+        // This is only for visualization, auto true for intermediate
+        bool bManhattan = false;
         float2 jitter = float2(7.5f, 7.5f);
         float colorSaturation = 0.5f;
         float colorValue = 0.95f;
@@ -110,7 +115,8 @@ private:
 
         bool bStale = true;
 
-        Texture::SharedPtr mpVoronoiTex;
+        Texture::SharedPtr mpColorTex;
+        Texture::SharedPtr mpCellTex;
         Fbo::SharedPtr mpFbo;
 
         FullScreenPass::UniquePtr mpVoronoiPass;
@@ -119,5 +125,23 @@ private:
         StructuredBuffer::SharedPtr mpSeedPoints;
         StructuredBuffer::SharedPtr mpCellColors;
     } mVoronoiResources;
+    // In voronoi case, pass target and render directly to it
+    // In intermediate case, pass voronoi fbo
+    void renderVoronoi(RenderContext* pRenderContext);
+    void updateVoronoiUI(Gui* pGui);
     void updateVoronoiInputs();
+
+    struct MosiacResources
+    {
+        ComputeState::SharedPtr mpState;
+        ComputeVars::SharedPtr mpVars;
+        ComputeProgram::SharedPtr mpComputeShader;
+        Texture::SharedPtr mpOutputTex;
+
+        struct MosiacPerFrame
+        {
+            int2 textureDimensions;
+            uint numCells;
+        } mPerFrame;
+    } mMosiacResources;
 };
