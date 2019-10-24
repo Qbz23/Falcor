@@ -54,6 +54,7 @@ void GrfxSandbox::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
         modeList.push_back({ 1, "Edge Rendering" });
         modeList.push_back({ 2, "Voronoi" });
         modeList.push_back({ 3, "Mosaic" });
+        modeList.push_back({ 4, "Caustics" });
         if (pGui->addDropdown("Mode", modeList, (uint32_t&)mMode))
         {
             if (mMode == Voronoi || mMode == Mosaic)
@@ -138,13 +139,85 @@ void GrfxSandbox::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
             updateVoronoiUI(pGui);
             break;
         }
+        case Caustics:
+        {
+            if (pGui->beginGroup("Fake Caustics"))
+            {
+                Gui::DropdownList mixList;
+                mixList.push_back({ 0, "Multiply" });
+                mixList.push_back({ 1, "Add" });
+                mixList.push_back({ 2, "Min" });
+                mixList.push_back({ 3, "Max" });
+                mixList.push_back({ 4, "Avg" });
+                if (pGui->addDropdown("Mix Type", mixList, mCausticResources.mixTypeIndex))
+                {
+                    std::string kAddDef = "_ADD";
+                    std::string kMinDef = "_MIN";
+                    std::string kMaxDef = "_MAX";
+                    std::string kAvgDef = "_AVG";
+
+                    Program::DefineList mixDefines;
+                    mixDefines.add(kAddDef);
+                    mixDefines.add(kMinDef);
+                    mixDefines.add(kMaxDef);
+                    mixDefines.add(kAvgDef);
+                    mCausticResources.mpState->getProgram()->removeDefines(mixDefines);
+
+                    switch (mCausticResources.mixTypeIndex)
+                    {
+                    case 1: mCausticResources.mpState->getProgram()->addDefine(kAddDef); break;
+                    case 2: mCausticResources.mpState->getProgram()->addDefine(kMinDef); break;
+                    case 3: mCausticResources.mpState->getProgram()->addDefine(kMaxDef); break;
+                    case 4: mCausticResources.mpState->getProgram()->addDefine(kAvgDef); break;
+                    }
+
+                    pGui->endGroup();
+                }
+
+                pGui->addFloatVar("Color Split Offset", mCausticResources.mPerFrame.colorSplitOffset);
+                pGui->addFloatVar("Intensity Scale", mCausticResources.mPerFrame.intensityScale);
+
+                if (GuiUint(pGui, "Num Textures", &mCausticResources.numCausticTex, 1, 16))
+                {
+                    Program::DefineList numTexDefine;
+                    numTexDefine.add("_NUM_CAUST_TEX", std::to_string(mCausticResources.numCausticTex));
+                    mCausticResources.mpState->getProgram()->setDefines(numTexDefine);
+                }
+
+
+                GuiUint(pGui, "Tex Property UI Index", &mCausticResources.texUiIndex, 0, mCausticResources.numCausticTex - 1);
+
+                vec4 causticVector = mCausticResources.mPerFrame.causticVector[mCausticResources.texUiIndex];
+                vec2 causticScale = vec2(causticVector.x, causticVector.y);
+                vec2 causticOffset = vec2(causticVector.z, causticVector.w);
+                std::string indexStr = std::to_string(mCausticResources.texUiIndex);
+                pGui->addFloat2Var((std::string("Caustic Scale") + indexStr).c_str(), causticScale, 0.01f);
+                pGui->addFloat2Var((std::string("Caustic Offset") + indexStr).c_str(), causticOffset, 0.0f);
+                mCausticResources.mPerFrame.causticVector[mCausticResources.texUiIndex] = vec4(
+                        causticScale.x,
+                        causticScale.y,
+                        causticOffset.x,
+                        causticOffset.y
+                );
+                float timeScale = mCausticResources.mPerFrame.timeScale[mCausticResources.texUiIndex].x;
+                pGui->addFloatVar(
+                    (std::string("Time Scale") + indexStr).c_str(),
+                    timeScale,
+                    0.f
+                );
+                mCausticResources.mPerFrame.timeScale[mCausticResources.texUiIndex].x = timeScale;
+            }
+            break;
+        }
         }
 
         pGui->endGroup();
     }
 }
 
-//https://martin.ankerl.com/2009/12/09/how-to-create-random-colors-programmatically/
+//
+// https://martin.ankerl.com/2009/12/09/how-to-create-random-colors-programmatically/
+//
 float3 hsvToRgb(float h, float s, float v)
 {
     int hI = (int)(h * 6);
@@ -392,21 +465,168 @@ void GrfxSandbox::onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext
 
     // Mosaic Resources
     {
-        mMosiacResources.mpState = ComputeState::create();
-        mMosiacResources.mpComputeShader = ComputeProgram::createFromFile("Mosaic.cs.hlsl", "main");
-        mMosiacResources.mpState->setProgram(mMosiacResources.mpComputeShader);
-        mMosiacResources.mpVars = ComputeVars::create(mMosiacResources.mpComputeShader->getActiveVersion()->getReflector());
-        mMosiacResources.mpOutputTex = Texture::create2D(
+        // Broken for now and idk why and its not my job to figure it out
+        //
+        // https://github.com/NVIDIAGameWorks/Falcor/issues/220
+        //
+        //mMosiacResources.mpState = ComputeState::create();
+        //mMosiacResources.mpComputeShader = ComputeProgram::createFromFile("Mosaic.cs.hlsl", "main");
+        //mMosiacResources.mpState->setProgram(mMosiacResources.mpComputeShader);
+        //mMosiacResources.mpVars = ComputeVars::create(mMosiacResources.mpComputeShader->getReflector());
+        //mMosiacResources.mpOutputTex = Texture::create2D(
+        //    w,
+        //    h,
+        //    ResourceFormat::RGBA32Float,
+        //    1u,
+        //    1u,
+        //    nullptr,
+        //    ResourceBindFlags::UnorderedAccess
+        //);
+
+        //mMosiacResources.mPerFrame.textureDimensions = int2(w, h);
+    }
+
+    // Caustic Resources
+    {
+        mCausticResources.mpState = GraphicsState::create();
+        mCausticResources.mpShader = GraphicsProgram::createFromFile("Caustics.slang", "", "ps");
+        mCausticResources.mpState->setProgram(mCausticResources.mpShader);
+        mCausticResources.mpVars = GraphicsVars::create(mCausticResources.mpShader->getReflector());
+
+        Sampler::Desc samplerDesc;
+        samplerDesc.setFilterMode(
+            Sampler::Filter::Linear,
+            Sampler::Filter::Linear,
+            Sampler::Filter::Linear
+        );
+        samplerDesc.setAddressingMode(
+            Sampler::AddressMode::Wrap,
+            Sampler::AddressMode::Wrap,
+            Sampler::AddressMode::Wrap
+        );
+        mCausticResources.mpSampler = Sampler::create(samplerDesc);
+        mCausticResources.mpVars->setSampler("gSampler", mCausticResources.mpSampler);
+
+
+        //const uint32_t kNumCausticTex = 2;
+        //std::string causticTexPaths[kNumCausticTex] = {
+        //    "caust_001.png",
+        //    "caust_002.png"
+        //};
+
+
+        //
+        // https://opengameart.org/content/water-caustics-effect-small
+        //
+        // Gonna pack all the tex into a tex2darray
+        Texture::SharedPtr tempCausticTex[kMaxCausticTex] = { nullptr };
+        uint32_t texW;
+        uint32_t texH;
+        for (uint32_t i = 0; i < kMaxCausticTex; ++i)
+        {
+            std::string texPath;
+            if (i < 9)
+            {
+                texPath = "caust_00";
+            }
+            else
+            {
+                texPath = "caust_0";
+            }
+            texPath += std::to_string(i + 1) + ".png";
+
+            tempCausticTex[i] = createTextureFromFile(texPath, true, false);
+            uint32_t w = tempCausticTex[i]->getWidth();
+            uint32_t h = tempCausticTex[i]->getHeight();
+            if (i == 0)
+            {
+                texW = w;
+                texH = h;
+            }
+            else
+            {
+                assert(texW == w && texH == h);
+            }
+        }
+        mCausticResources.mpInTex = Texture::create2D(
+            texW,
+            texH,
+            ResourceFormat::BGRX8Unorm,
+            kMaxCausticTex, // arraysize
+            Falcor::Texture::kMaxPossible, // num Mips
+            nullptr, // inital data
+            ResourceBindFlags::RenderTarget | ResourceBindFlags::ShaderResource
+        );
+        for (uint32_t i = 0; i < kMaxCausticTex; ++i)
+        {
+            uint32_t srcIndex = tempCausticTex[i]->getSubresourceIndex(0, 0);
+            uint32_t dstIndex = mCausticResources.mpInTex->getSubresourceIndex(i, 0);
+            pRenderContext->copySubresource(
+                mCausticResources.mpInTex.get(),
+                dstIndex,
+                tempCausticTex[i].get(),
+                srcIndex
+            );
+        }
+        mCausticResources.mpInTex->generateMips(pRenderContext);
+
+        // Initialize cb values
+        vec2 causticScales[4] = {
+            float2(1.0f, 1.0f),
+            float2(0.5f, 1.0f),
+            float2(1.0f, 0.5f),
+            float2(0.5f, 0.5f)
+        };
+        vec2 causticOffsets[4] = {
+            float2(0.1f, 0.1f),
+            float2(0.25f, 0.5f),
+            float2(0.5f, 0.25f),
+            float2(0.25f, 0.25f)
+        };
+        float timeScales[8] = {
+            0.04f,
+            0.03f,
+            0.03f,
+            0.02f,
+            0.02f,
+            0.015f,
+            0.015f,
+            0.01f
+        };
+        for (uint32_t i = 0; i < kMaxCausticTex; ++i)
+        {
+            vec2 scale = causticScales[i % 4];
+            vec2 offset = causticOffsets[i % 4];
+            vec4 causticVec = vec4(scale.x, scale.y, offset.x, offset.y);
+            float timeScale = timeScales[i % 8];
+            mCausticResources.mPerFrame.causticVector[i] = causticVec;
+            mCausticResources.mPerFrame.timeScale[i].x = timeScale;
+        }
+
+
+        mCausticResources.mpVars->setTexture("gCausticTex", mCausticResources.mpInTex);
+
+        mCausticResources.mpOutTex = Texture::create2D(
             w,
             h,
             ResourceFormat::RGBA32Float,
             1u,
             1u,
             nullptr,
-            ResourceBindFlags::UnorderedAccess
-        );
+            ResourceBindFlags::RenderTarget | ResourceBindFlags::ShaderResource);
+        mCausticResources.mpDepthBuffer = Texture::create2D(
+            w,
+            h,
+            ResourceFormat::D32Float,
+            1u,
+            1u,
+            nullptr,
+            ResourceBindFlags::DepthStencil | ResourceBindFlags::ShaderResource);
 
-        mMosiacResources.mPerFrame.textureDimensions = int2(w, h);
+
+        mCausticResources.mpFbo = Fbo::create();
+        mCausticResources.mpFbo->attachColorTarget(mCausticResources.mpOutTex, 0);
+        mCausticResources.mpFbo->attachDepthStencilTarget(mCausticResources.mpDepthBuffer, 0);
     }
 }
 
@@ -531,6 +751,9 @@ void GrfxSandbox::onFrameRender(SampleCallbacks* pSample, RenderContext* pRender
     }
     case Mosaic:
     {
+        // Does not work, see onLoad.
+        break;
+
         // Gonna need voronoi as an input
         renderVoronoi(pRenderContext);
 
@@ -559,6 +782,28 @@ void GrfxSandbox::onFrameRender(SampleCallbacks* pSample, RenderContext* pRender
 
         break;
     }
+    case Caustics:
+    {
+        pRenderContext->clearFbo(mCausticResources.mpFbo.get(), clearColor, 1.0f, 0);
+
+        mCausticResources.mpState->setFbo(mCausticResources.mpFbo);
+        pRenderContext->setGraphicsState(mCausticResources.mpState);
+
+        mCausticResources.mPerFrame.time = pSample->getCurrentTime();
+        auto cb = mCausticResources.mpVars->getConstantBuffer("PerFrameCB");
+
+        cb->setBlob(&mCausticResources.mPerFrame, 0,
+            sizeof(CausticResources::CausticPerFrame));
+        pRenderContext->setGraphicsVars(mCausticResources.mpVars);
+
+        mCoreResources.mpSceneRenderer->renderScene(pRenderContext);
+
+        pRenderContext->blit(
+            mCausticResources.mpOutTex->getSRV(),
+            pTargetFbo->getColorTexture(0)->getRTV());
+
+        break;
+    };
     }
 }
 

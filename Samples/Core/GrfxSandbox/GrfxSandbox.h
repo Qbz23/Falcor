@@ -58,7 +58,8 @@ private:
         EdgeRender = 1,
         Voronoi = 2,
         Mosaic = 3,
-        ModeCount = 4
+        Caustics = 4, // https://www.alanzucconi.com/2019/09/13/believable-caustics-reflections/
+        ModeCount = 5
     } mMode;
 
     struct CoreResources //For HelloFalcor and input to other modes
@@ -144,4 +145,31 @@ private:
             uint numCells;
         } mPerFrame;
     } mMosiacResources;
+
+    static const uint32_t kMaxCausticTex = 16;
+    struct CausticResources
+    {
+        GraphicsState::SharedPtr mpState;
+        GraphicsVars::SharedPtr mpVars;
+        GraphicsProgram::SharedPtr mpShader;
+        Texture::SharedPtr mpInTex;
+        Texture::SharedPtr mpOutTex;
+        Texture::SharedPtr mpDepthBuffer;
+        Sampler::SharedPtr mpSampler;
+        Fbo::SharedPtr mpFbo;
+        uint32_t mixTypeIndex = 0;
+        uint32_t numCausticTex = 2;
+        uint32_t texUiIndex = 0;
+
+        struct CausticPerFrame
+        {
+            vec3 lightDir = vec3(-0.25f, 0.75f, 1.0f);
+            float time = 0.0f;
+            vec4 causticVector[kMaxCausticTex];
+            // hlsl won't let you have an array of float4 it pads it to float
+            vec4 timeScale[kMaxCausticTex];
+            float colorSplitOffset = 0.02f;
+            float intensityScale = 1.25f;
+        } mPerFrame;
+    } mCausticResources;
 };

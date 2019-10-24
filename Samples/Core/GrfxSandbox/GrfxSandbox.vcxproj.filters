@@ -15,6 +15,9 @@
     <None Include="Data\GrfxSandbox.slang">
       <Filter>Data</Filter>
     </None>
+    <None Include="Data\Caustics.slang">
+      <Filter>Data</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Data\ImageEdge.ps.hlsl">
