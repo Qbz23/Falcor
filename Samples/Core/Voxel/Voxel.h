@@ -27,6 +27,7 @@
 ***************************************************************************/
 #pragma once
 #include "Falcor.h"
+#include "VoxelChunk.hpp"
 
 using namespace Falcor;
 
@@ -53,8 +54,12 @@ private:
     // to be easily re-called in OnDataReload
     void Init();
 
-    struct BasePerFrame
+    struct UIData
     {
-        vec3 lightDir = vec3(1, -1, 1);
-    } m_BasePerFrame;
+        ivec3 currentVoxelIndex;
+        int currentVoxelColor;
+        bool currentVoxelIsVisible;
+    } m_UIData;
+
+    VoxelChunk m_VoxelChunk;
 };

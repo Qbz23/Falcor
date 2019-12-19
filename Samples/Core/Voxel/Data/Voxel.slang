@@ -31,9 +31,9 @@ __import Shading;
 __import Helpers;
 __import BRDF;
 
-layout(binding = 0) cbuffer PerFrameCB : register(b0)
+layout(binding = 0) cbuffer VoxelData : register(b0)
 {
-    float3 lightDir;
+    float3 voxelColor;
 }
 
 struct PsOut
@@ -41,46 +41,9 @@ struct PsOut
     float4 color : SV_TARGET0;
 };
 
-// Must be passed along from vertex shader
-// This will fail on pso creation bc the signatures are
-// incompatibler bc SV_InstanceID isnt provided from the vs
-PsOut ps(VertexOut vOut, uint id : SV_InstanceID)
+PsOut ps(VertexOut vOut)
 {
     PsOut psOut;
-
-    UINT colorIndex = id % 3;
-    float4 finalColor = float4(0.3, 0.3, 0.3, 1);
-    switch(colorIndex)
-    {
-        case 0:
-        {
-            finalColor = float4(1.0f, 0.2f, 0.2f, 1.0f);
-            break;
-        }
-        case 1:
-        {
-            finalColor = float4(0.2f, 1.0f, 0.2f, 1.0f);
-            break;
-        }
-        case 2:
-        {
-            finalColor = float4(0.2f, 0.2f, 1.0f, 1.0f);
-            break;
-        }
-        default:
-        {
-            finalColor = float4(0.2f, 0.0f, 0.0f, 1.0f);
-            break;
-        }
-    }
-
-    // unnecessary
-    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
-
-
-    //Diffuse 
-    finalColor.rgb += float3(0.5f, 0.5f, 0.5f) * saturate(dot(normalize(lightDir), vOut.normalW));
-
-    psOut.color = finalColor;
+    psOut.color = float4(voxelColor, 1.0f);
     return psOut;
 }

@@ -29,7 +29,42 @@
 
 void Voxel::onGuiRender(SampleCallbacks* pSample, Gui* pGui)
 {
-    pGui->addFloat3Var("Light Dir", m_BasePerFrame.lightDir);
+    if (pGui->beginGroup("Voxels"))
+    {
+        std::string sSize = std::to_string(VoxelChunk::skChunkSideLength);
+        pGui->addText(std::string("Chunk Size " + sSize + "x" + sSize + "x" + sSize).c_str());
+        pGui->addInt3Var("Voxel Index", m_UIData.currentVoxelIndex, 0, VoxelChunk::skChunkSideLength - 1);
+
+        m_UIData.currentVoxelColor = m_VoxelChunk.GetVoxelStatus(m_UIData.currentVoxelIndex);
+        m_UIData.currentVoxelIsVisible = m_UIData.currentVoxelColor != 0;
+
+        pGui->addCheckBox("Visible", m_UIData.currentVoxelIsVisible);
+        if(m_UIData.currentVoxelIsVisible)
+        {
+            // This would be better as a dropdown
+            pGui->addIntVar("ColorIndex", m_UIData.currentVoxelColor, 1, VoxelChunk::VoxelColor::VoxelColorCount - 1);
+            m_VoxelChunk.SetVoxelStatus(
+                (VoxelChunk::VoxelColor)m_UIData.currentVoxelColor,
+                m_UIData.currentVoxelIndex.x,
+                m_UIData.currentVoxelIndex.y,
+                m_UIData.currentVoxelIndex.z
+            );
+        }
+        else
+        {
+            m_VoxelChunk.SetVoxelStatus(
+                VoxelChunk::VoxelColor::VoxelInvisible,
+                m_UIData.currentVoxelIndex.x,
+                m_UIData.currentVoxelIndex.y,
+                m_UIData.currentVoxelIndex.z
+            );
+        }
+
+
+
+        pGui->endGroup();
+    }
+    
 }
 
 void Voxel::Init()
@@ -41,7 +76,6 @@ void Voxel::Init()
     m_pCube = Model::createFromFile("RoyaltyFreeBox.obj");
 
     m_pScene = Scene::create();
-    m_pScene->addModelInstance(m_pCube, "Voxel", vec3(0, -1, -3));
     m_pScene->addCamera(m_pCamera);
     m_pSceneRenderer = SceneRenderer::create(m_pScene);
 
@@ -50,6 +84,8 @@ void Voxel::Init()
     m_pState->setProgram(shader);
 
     m_pVars = GraphicsVars::create(shader->getReflector());
+
+    m_VoxelChunk.InitVoxels(m_pScene, m_pCube, true);
 }
 
 void Voxel::onLoad(SampleCallbacks* pSample, RenderContext* pRenderContext)
@@ -61,26 +97,13 @@ void Voxel::onFrameRender(SampleCallbacks* pSample, RenderContext* pRenderContex
 {
     const glm::vec4 clearColor(0.38f, 0.52f, 0.10f, 1);
     pRenderContext->clearFbo(pTargetFbo.get(), clearColor, 1.0f, 0, FboAttachmentType::All);
-
-    //m_pScene->deleteAllModels();
-    //float kVoxelScale = 0.25f;
-    //uint32_t kChunkWidth;
-    //for (uint i = 0; i < kChunkWidth; ++i)
-    //{
-    //    m_pScene->addModelInstance()
-    //}
-
-
     m_pSceneRenderer->update(pSample->getCurrentTime());
-
     m_pState->setFbo(pTargetFbo);
-    auto cb = m_pVars->getConstantBuffer("PerFrameCB");
-    cb->setBlob(&m_BasePerFrame, 0, sizeof(BasePerFrame));
 
     pRenderContext->setGraphicsState(m_pState);
     pRenderContext->setGraphicsVars(m_pVars);
 
-    m_pSceneRenderer->renderScene(pRenderContext);
+    m_VoxelChunk.RenderVoxels(pRenderContext, m_pSceneRenderer);
 }
 
 void Voxel::onShutdown(SampleCallbacks* pSample)
@@ -112,7 +135,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 {
     Voxel::UniquePtr pRenderer = std::make_unique<Voxel>();
     SampleConfig config;
-    config.windowDesc.title = "Falcor Project Template";
+    config.windowDesc.title = "Voxel Engine";
     config.windowDesc.resizableWindow = true;
     Sample::run(config, pRenderer);
     return 0;

@@ -5,6 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Voxel.h" />
+    <ClInclude Include="VoxelChunk.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Data">
